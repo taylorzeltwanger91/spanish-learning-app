@@ -518,8 +518,22 @@ function Sentences({fs,pf,sf,lessons,mob}) {
 
 function Dict({all,custom,addC,delC,upd,lessons,mob}) {
   const [s,setS]=useState("");const [fl,setFl]=useState("all");const [show,setShow]=useState(false);const [nw,setNw]=useState({spanish:"",english:"",notes:"",context:"general"});
-  const f=useMemo(()=>{let r=all;if(fl!=="all")r=r.filter(i=>i.lesson===fl);if(s){const q=s.toLowerCase();r=r.filter(i=>i.spanish.toLowerCase().includes(q)||i.english.toLowerCase().includes(q))}return r.sort((a,b)=>a.spanish.localeCompare(b.spanish,"es"))},[all,fl,s]);
+  const [sort,setSort]=useState({col:"spanish",dir:"asc"});
+  const [editing,setEditing]=useState(null);const [editVals,setEditVals]=useState({});
+  const posOpts=["noun","verb-AR","verb-ER","verb-IR","verb-irregular","phrase","interjection","adjective","question","number","conjunction","adverb","custom"];
+  const confFromLabel=v=>v==="Mastered"?4:v==="Learning"?2:0;
+  const toggleSort=col=>{setSort(p=>p.col===col?{col,dir:p.dir==="asc"?"desc":"asc"}:{col,dir:"asc"})};
+  const sortArrow=col=>sort.col===col?(sort.dir==="asc"?" \u25B2":" \u25BC"):"";
+  const startEdit=i=>{setEditing(i.id);setEditVals({spanish:i.spanish,english:i.english,pos:i.pos,lesson:i.lesson,status:confLabel(i.confidence)})};
+  const saveEdit=id=>{const u={spanish:editVals.spanish,english:editVals.english,pos:editVals.pos,lesson:editVals.lesson,confidence:confFromLabel(editVals.status)};upd(id,u);setEditing(null)};
+  const cancelEdit=()=>setEditing(null);
+  const f=useMemo(()=>{let r=all;if(fl!=="all")r=r.filter(i=>i.lesson===fl);if(s){const q=s.toLowerCase();r=r.filter(i=>i.spanish.toLowerCase().includes(q)||i.english.toLowerCase().includes(q))}const sc=sort.col;const dir=sort.dir==="asc"?1:-1;return [...r].sort((a,b)=>{let av,bv;if(sc==="spanish"||sc==="english"){av=a[sc].toLowerCase();bv=b[sc].toLowerCase();return av.localeCompare(bv,"es")*dir}if(sc==="type"){av=posLabel(a.pos);bv=posLabel(b.pos);return av.localeCompare(bv)*dir}if(sc==="source"){av=a.lesson==="custom"?"Custom":`L${a.lesson}`;bv=b.lesson==="custom"?"Custom":`L${b.lesson}`;return av.localeCompare(bv)*dir}if(sc==="status"){av=a.confidence;bv=b.confidence;return (av-bv)*dir}return 0})},[all,fl,s,sort]);
   const add=()=>{if(nw.spanish&&nw.english){addC(nw);setNw({spanish:"",english:"",notes:"",context:"general"});setShow(false)}};
+  const thStyle={flex:2,cursor:"pointer",userSelect:"none"};const thStyle1={flex:1,cursor:"pointer",userSelect:"none"};
+  const editInp={padding:"6px 8px",borderRadius:6,border:"1px solid #dee2e6",fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none",color:"#264653",background:"#fff",width:"100%",boxSizing:"border-box"};
+  const editSel={...editInp,cursor:"pointer"};
+  const savBtnS={padding:"5px 14px",borderRadius:6,border:"none",background:"#2d6a4f",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"};
+  const canBtnS={padding:"5px 14px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:12,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"};
 
   return <div style={mob?Z.pgM:Z.pg}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:mob?"flex-start":"center",marginBottom:mob?16:24,gap:mob?8:0,flexWrap:"wrap"}}><div><h1 style={mob?Z.h1M:Z.h1}>Diccionario</h1><p style={{...Z.sub,marginBottom:mob?8:24}}>{all.length} words</p></div><button style={Z.addBtn} onClick={()=>setShow(x=>!x)}>{IC.plus} Add Word</button></div>
@@ -532,23 +546,40 @@ function Dict({all,custom,addC,delC,upd,lessons,mob}) {
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:mob?8:12,marginBottom:16,flexWrap:"wrap"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid #dee2e6",background:"#fff",flex:1,maxWidth:mob?"100%":320,color:"#868e96"}}>{IC.srch}<input style={{border:"none",outline:"none",fontSize:13,fontFamily:"'DM Sans',sans-serif",flex:1,color:"#264653",background:"transparent"}} placeholder="Search..." value={s} onChange={e=>setS(e.target.value)}/></div>
       <select style={Z.sel} value={fl} onChange={e=>setFl(e.target.value)}><option value="all">All</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id}</option>)}<option value="custom">Custom</option></select>
+      {mob&&<select style={Z.sel} value={sort.col} onChange={e=>toggleSort(e.target.value)}><option value="spanish">Sort: Spanish{sortArrow("spanish")}</option><option value="english">Sort: English{sortArrow("english")}</option><option value="type">Sort: Type{sortArrow("type")}</option><option value="source">Sort: Source{sortArrow("source")}</option><option value="status">Sort: Status{sortArrow("status")}</option></select>}
     </div>
     {mob?<div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {f.map(i=><div key={i.id} style={{background:"#fff",borderRadius:10,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+      {f.map(i=>editing===i.id?<div key={i.id} style={{background:"#fff",borderRadius:10,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Spanish</label><input style={editInp} value={editVals.spanish} onChange={e=>setEditVals(v=>({...v,spanish:e.target.value}))}/></div>
+          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>English</label><input style={editInp} value={editVals.english} onChange={e=>setEditVals(v=>({...v,english:e.target.value}))}/></div>
+          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Type</label><select style={editSel} value={editVals.pos} onChange={e=>setEditVals(v=>({...v,pos:e.target.value}))}>{posOpts.map(p=><option key={p} value={p}>{posLabel(p)}</option>)}</select></div>
+          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Source</label><select style={editSel} value={editVals.lesson} onChange={e=>setEditVals(v=>({...v,lesson:e.target.value}))}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id}</option>)}<option value="custom">Custom</option></select></div>
+          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Status</label><select style={editSel} value={editVals.status} onChange={e=>setEditVals(v=>({...v,status:e.target.value}))}><option>New</option><option>Learning</option><option>Mastered</option></select></div>
+        </div>
+        <div style={{display:"flex",gap:8}}><button style={savBtnS} onClick={()=>saveEdit(i.id)}>Save</button><button style={canBtnS} onClick={cancelEdit}>Cancel</button></div>
+      </div>:<div key={i.id} style={{background:"#fff",borderRadius:10,padding:"14px 16px",boxShadow:"0 1px 3px rgba(0,0,0,.05)",cursor:"pointer"}} onClick={()=>startEdit(i)}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
           <div><div style={{fontSize:16,fontWeight:600,color:"#1d3557"}}>{i.spanish}</div><div style={{fontSize:14,color:"#495057",marginTop:2}}>{i.english}</div></div>
-          <div style={{display:"flex",gap:4}}><button style={Z.iBtn} onClick={()=>upd(i.id,{favorite:!i.favorite})}>{IC.star(i.favorite)}</button>{i.lesson==="custom"&&<button style={Z.iBtn} onClick={()=>delC(i.id)}>{IC.del}</button>}</div>
+          <div style={{display:"flex",gap:4}}><button style={Z.iBtn} onClick={e=>{e.stopPropagation();upd(i.id,{favorite:!i.favorite})}}>{IC.star(i.favorite)}</button>{i.lesson==="custom"&&<button style={Z.iBtn} onClick={e=>{e.stopPropagation();delC(i.id)}}>{IC.del}</button>}</div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}><span style={Z.posT}>{posLabel(i.pos)}</span><span style={Z.lesT}>{i.lesson==="custom"?"Custom":`L${i.lesson}`}</span><span style={{display:"flex",alignItems:"center",gap:4,fontSize:12}}><span style={{width:7,height:7,borderRadius:"50%",background:confColor(i.confidence),display:"inline-block"}}/>{confLabel(i.confidence)}</span></div>
       </div>)}
       {!f.length&&<div style={{padding:"40px 20px",textAlign:"center",color:"#adb5bd",fontSize:14}}>No words match</div>}
     </div>
     :<div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
-      <div style={{display:"flex",padding:"12px 20px",fontSize:11,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",color:"#868e96",background:"#fafaf8",borderBottom:"1px solid #e9ecef"}}><span style={{flex:2}}>Spanish</span><span style={{flex:2}}>English</span><span style={{flex:1}}>Type</span><span style={{flex:1}}>Source</span><span style={{flex:1}}>Status</span><span style={{width:60}}/></div>
-      {f.map(i=><div key={i.id} style={{display:"flex",alignItems:"center",padding:"12px 20px",fontSize:14,borderBottom:"1px solid #f0f0f0"}}>
+      <div style={{display:"flex",padding:"12px 20px",fontSize:11,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",color:"#868e96",background:"#fafaf8",borderBottom:"1px solid #e9ecef"}}><span style={thStyle} onClick={()=>toggleSort("spanish")}>Spanish{sortArrow("spanish")}</span><span style={thStyle} onClick={()=>toggleSort("english")}>English{sortArrow("english")}</span><span style={thStyle1} onClick={()=>toggleSort("type")}>Type{sortArrow("type")}</span><span style={thStyle1} onClick={()=>toggleSort("source")}>Source{sortArrow("source")}</span><span style={thStyle1} onClick={()=>toggleSort("status")}>Status{sortArrow("status")}</span><span style={{width:80}}/></div>
+      {f.map(i=>editing===i.id?<div key={i.id} style={{display:"flex",alignItems:"center",padding:"8px 20px",fontSize:14,borderBottom:"1px solid #f0f0f0",gap:8}}>
+        <span style={{flex:2}}><input style={editInp} value={editVals.spanish} onChange={e=>setEditVals(v=>({...v,spanish:e.target.value}))}/></span>
+        <span style={{flex:2}}><input style={editInp} value={editVals.english} onChange={e=>setEditVals(v=>({...v,english:e.target.value}))}/></span>
+        <span style={{flex:1}}><select style={editSel} value={editVals.pos} onChange={e=>setEditVals(v=>({...v,pos:e.target.value}))}>{posOpts.map(p=><option key={p} value={p}>{posLabel(p)}</option>)}</select></span>
+        <span style={{flex:1}}><select style={editSel} value={editVals.lesson} onChange={e=>setEditVals(v=>({...v,lesson:e.target.value}))}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id}</option>)}<option value="custom">Custom</option></select></span>
+        <span style={{flex:1}}><select style={editSel} value={editVals.status} onChange={e=>setEditVals(v=>({...v,status:e.target.value}))}><option>New</option><option>Learning</option><option>Mastered</option></select></span>
+        <span style={{width:80,display:"flex",gap:4,justifyContent:"flex-end"}}><button style={savBtnS} onClick={()=>saveEdit(i.id)}>Save</button><button style={canBtnS} onClick={cancelEdit}>{"\u2715"}</button></span>
+      </div>:<div key={i.id} style={{display:"flex",alignItems:"center",padding:"12px 20px",fontSize:14,borderBottom:"1px solid #f0f0f0",cursor:"pointer"}} onClick={()=>startEdit(i)}>
         <span style={{flex:2,fontWeight:600,color:"#1d3557"}}>{i.spanish}</span><span style={{flex:2,color:"#495057"}}>{i.english}</span><span style={{flex:1}}><span style={Z.posT}>{posLabel(i.pos)}</span></span><span style={{flex:1,color:"#868e96"}}>{i.lesson==="custom"?"Custom":`L${i.lesson}`}</span>
         <span style={{flex:1,display:"flex",alignItems:"center",gap:4,fontSize:13}}><span style={{width:8,height:8,borderRadius:"50%",background:confColor(i.confidence),display:"inline-block"}}/>{confLabel(i.confidence)}</span>
-        <span style={{width:60,display:"flex",gap:4,justifyContent:"flex-end"}}><button style={Z.iBtn} onClick={()=>upd(i.id,{favorite:!i.favorite})}>{IC.star(i.favorite)}</button>{i.lesson==="custom"&&<button style={Z.iBtn} onClick={()=>delC(i.id)}>{IC.del}</button>}</span>
+        <span style={{width:80,display:"flex",gap:4,justifyContent:"flex-end"}}><button style={Z.iBtn} onClick={e=>{e.stopPropagation();upd(i.id,{favorite:!i.favorite})}}>{IC.star(i.favorite)}</button>{i.lesson==="custom"&&<button style={Z.iBtn} onClick={e=>{e.stopPropagation();delC(i.id)}}>{IC.del}</button>}</span>
       </div>)}
       {!f.length&&<div style={{padding:"40px 20px",textAlign:"center",color:"#adb5bd",fontSize:14}}>No words match</div>}
     </div>}
