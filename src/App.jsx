@@ -231,8 +231,17 @@ function parseLesson(text, fileId, fileName) {
   const vocab = [], sentences = [];
   let title = fileName.replace(/\.[^.]+$/,"");
 
+  // Try to extract lesson number from filename or text (e.g., "Lesson 3.1", "L3.1", "Unit 2", "Lección 4.2")
+  let lessonNum = null;
+  const numFromFile = fileName.match(/(?:lesson|lección|lecci[oó]n|unit|unidad|^L)\s*(\d+(?:\.\d+)?)/i)
+    || fileName.match(/(\d+(?:\.\d+)?)/);
+  if(numFromFile) lessonNum = numFromFile[1];
+
+  const numFromText = text.match(/^(?:lesson|lección|lecci[oó]n|unit|unidad)\s*(\d+(?:\.\d+)?)/im);
+  if(!lessonNum && numFromText) lessonNum = numFromText[1];
+
   // Detect title from first line or "Lesson X:" / "Lección X:" patterns
-  const titleMatch = text.match(/^(?:lesson|lección|unit|unidad)\s*[:\-–]?\s*(.+)/im);
+  const titleMatch = text.match(/^(?:lesson|lección|unit|unidad)\s*[:\-–]?\s*(?:\d+(?:\.\d+)?\s*[:\-–]?\s*)?(.+)/im);
   if(titleMatch) title = titleMatch[1].trim();
 
   for(const line of lines) {
@@ -273,7 +282,7 @@ function parseLesson(text, fileId, fileName) {
     }
   }
 
-  const lessonId = `d-${fileId.slice(0,6)}`;
+  const lessonId = lessonNum || `d-${fileId.slice(0,6)}`;
   return {
     id: lessonId,
     title,
