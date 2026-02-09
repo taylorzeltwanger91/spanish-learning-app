@@ -224,6 +224,118 @@ const IC = {
   star:(f)=><svg width="16" height="16" viewBox="0 0 24 24" fill={f?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
 };
 
+// Local parser: extracts vocabulary and sentences from lesson text
+function parseLesson(text, fileId, fileName) {
+  const lines = text.split(/\n/).map(l=>l.trim()).filter(Boolean);
+  const vocab = [], sentences = [];
+  let title = fileName.replace(/\.[^.]+$/,"");
+
+  // Detect title from first line or "Lesson X:" / "Lección X:" patterns
+  const titleMatch = text.match(/^(?:lesson|lección|unit|unidad)\s*[:\-–]?\s*(.+)/im);
+  if(titleMatch) title = titleMatch[1].trim();
+
+  for(const line of lines) {
+    // Match vocabulary patterns: "spanish - english", "spanish = english", "spanish: english", "spanish — english"
+    const vocabMatch = line.match(/^[•\-\*\d.\)]*\s*([¿¡]?[a-záéíóúñü\s,()\/]+?)\s*[-=–—:]\s*(.+)$/i);
+    if(vocabMatch) {
+      const sp = vocabMatch[1].trim(), en = vocabMatch[2].trim().replace(/\s*\([^)]*\)\s*$/, x=>x).trim();
+      if(sp && en && sp.length < 80 && en.length < 120) {
+        // Detect part of speech
+        let pos = "phrase";
+        const spLow = sp.toLowerCase();
+        if(/^(yo|tú|él|ella|usted|nosotros|ellos|ellas|ustedes)\s/.test(spLow)) pos = "phrase";
+        else if(spLow.endsWith("ar")) pos = "verb-AR";
+        else if(spLow.endsWith("er")) pos = "verb-ER";
+        else if(spLow.endsWith("ir") && spLow !== "sir") pos = "verb-IR";
+        else if(/^(el|la|los|las|un|una)\s/.test(spLow)) pos = "noun";
+        else if(/^¿/.test(sp)) pos = "question";
+        else if(/^\d+$/.test(sp) || /^(uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|veinte|treinta|cien)\b/i.test(sp)) pos = "number";
+        else if(/^(y|o|pero|porque|sino|aunque|ni|que)\b$/i.test(sp)) pos = "conjunction";
+        else if(sp.split(" ").length === 1 && !spLow.endsWith("ar") && !spLow.endsWith("er") && !spLow.endsWith("ir")) pos = "noun";
+
+        // Detect irregular verbs
+        if(pos.startsWith("verb") && /^(ser|estar|ir|tener|hacer|poder|saber|poner|venir|decir|salir|dar|ver|querer|conocer|traer|oír|caer)\b/i.test(spLow)) pos = "verb-irregular";
+
+        // Build tags
+        const tags = [pos.startsWith("verb")?pos.split("-")[1]:""].filter(Boolean);
+        if(pos.startsWith("verb")) tags.push("verb");
+        if(pos === "noun") tags.push("noun");
+
+        vocab.push({ spanish: sp, english: en, pos, tags });
+      }
+    }
+
+    // Match sentence patterns: lines with both Spanish chars and enough length
+    const sentMatch = line.match(/^[•\-\*\d.\)]*\s*([¿¡]?[A-ZÁÉÍÓÚÑÜ][^-=–—]*[.?!])\s*[-=–—]\s*([A-Z][^-=–—]*[.?!])\s*$/);
+    if(sentMatch) {
+      sentences.push({ es: sentMatch[1].trim(), en: sentMatch[2].trim() });
+    }
+  }
+
+  const lessonId = `d-${fileId.slice(0,6)}`;
+  return {
+    id: lessonId,
+    title,
+    date: new Date().toISOString().split("T")[0],
+    sentences,
+    items: vocab.map((v, i) => ({
+      id: `d-${fileId}-${i}`,
+      spanish: v.spanish,
+      english: v.english,
+      pos: v.pos,
+      tags: v.tags.length ? v.tags : ["imported"],
+      lesson: lessonId,
+      confidence: 0,
+      lastSeen: null,
+      nextReview: null,
+      favorite: false,
+    })),
+  };
+}
+
+// Get set of already-imported file IDs from localStorage
+function getImported() { try{return JSON.parse(localStorage.getItem("lengua-imported")||"[]")}catch(e){return[]} }
+function markImported(ids) { const prev=getImported(); localStorage.setItem("lengua-imported",JSON.stringify([...new Set([...prev,...ids])])) }
+
+// Sync with Google Drive: scan folder, download & parse new files, update lessons
+async function syncDrive(ds, lessons, setLessons, setSync) {
+  if(!ds.folderId||!ds.apiKey) return;
+  setSync(s=>({...s, syncing:true}));
+  try {
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents+and+trashed=false&key=${ds.apiKey}&fields=files(id,name,mimeType,modifiedTime)`);
+    if(!r.ok) throw new Error(`Drive API ${r.status}`);
+    const data = await r.json();
+    const files = data.files||[];
+    const imported = getImported();
+    const newFiles = files.filter(f=>!imported.includes(f.id));
+
+    let added = 0;
+    for(const f of newFiles) {
+      try {
+        let txt = "";
+        if(f.mimeType==="application/vnd.google-apps.document") {
+          const er = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain&key=${ds.apiKey}`);
+          if(!er.ok) continue;
+          txt = await er.text();
+        } else {
+          const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&key=${ds.apiKey}`);
+          if(!dr.ok) continue;
+          txt = await dr.text();
+        }
+        const lesson = parseLesson(txt, f.id, f.name);
+        if(lesson.items.length) {
+          setLessons(p=>{const x=p.findIndex(l=>l.id===lesson.id);if(x>=0){const n=[...p];n[x]=lesson;return n}return[...p,lesson]});
+          added += lesson.items.length;
+        }
+        markImported([f.id]);
+      } catch(e) { /* skip file on error */ }
+    }
+    setSync({syncing:false, lastSync:Date.now(), newFiles:newFiles.length, newWords:added, totalFiles:files.length});
+  } catch(e) {
+    setSync(s=>({...s, syncing:false, error:e.message}));
+  }
+}
+
 function useIsMobile(bp=768) {
   const [mob, setMob] = useState(()=>typeof window!=="undefined"&&window.innerWidth<bp);
   useEffect(()=>{const h=()=>setMob(window.innerWidth<bp);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h)},[bp]);
@@ -240,8 +352,15 @@ export default function App() {
   const [pf, setPf] = useState({ lesson:"all", verbType:"all" });
   const [pm, setPm] = useState("es-en");
   const [hist, setHist] = useState([]);
-  const [ds, setDs] = useState({ folderId:"", apiKey:"" });
+  const [ds, setDs] = useState(()=>{try{const v=JSON.parse(localStorage.getItem("lengua-drive")||"null");return v&&v.folderId?v:{folderId:"",apiKey:""}}catch(e){return{folderId:"",apiKey:""}}});
   const [sideOpen, setSideOpen] = useState(false);
+  const [driveSync, setDriveSync] = useState({syncing:false,lastSync:null,newFiles:0});
+
+  // Persist drive settings
+  useEffect(()=>{if(ds.folderId||ds.apiKey)localStorage.setItem("lengua-drive",JSON.stringify(ds))},[ds]);
+
+  // Auto-sync on mount when credentials exist
+  useEffect(()=>{if(ds.folderId&&ds.apiKey){syncDrive(ds,lessons,setLessons,setDriveSync)}},[]);// eslint-disable-line react-hooks/exhaustive-deps
   const mob = useIsMobile();
 
   const all = useMemo(()=>[...lessons.flatMap(l=>l.items),...custom],[lessons,custom]);
@@ -281,7 +400,7 @@ export default function App() {
         {view==="sentences"&&<Sentences fs={fs} pf={pf} sf={setPf} lessons={lessons} mob={mob}/>}
         {view==="dictionary"&&<Dict all={all} custom={custom} addC={addC} delC={delC} upd={upd} lessons={lessons} mob={mob}/>}
         {view==="progress"&&<Prog st={st} all={all} lessons={lessons} hist={hist} mob={mob}/>}
-        {view==="drive"&&<Drive ds={ds} sds={setDs} lessons={lessons} sl={setLessons} mob={mob}/>}
+        {view==="drive"&&<Drive ds={ds} sds={setDs} lessons={lessons} sl={setLessons} mob={mob} sync={driveSync} onSync={()=>syncDrive(ds,lessons,setLessons,setDriveSync)}/>}
       </main>
     </div>
   );
@@ -446,43 +565,65 @@ function Prog({st,all,lessons,hist,mob}) {
   </div>;
 }
 
-function Drive({ds,sds,lessons,sl,mob}) {
-  const [files,setFiles]=useState([]);const [ld,setLd]=useState(false);const [err,setErr]=useState("");const [ps,setPs]=useState({});
+function Drive({ds,sds,mob,sync,onSync}) {
+  const [showSetup,setShowSetup]=useState(!ds.folderId||!ds.apiKey);
+  const connected=!!(ds.folderId&&ds.apiKey);
+  const imported=getImported();
 
-  const scan=async()=>{if(!ds.folderId||!ds.apiKey){setErr("Enter both Folder ID and API Key");return}setLd(true);setErr("");
-    try{const r=await fetch(`https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents&key=${ds.apiKey}&fields=files(id,name,mimeType,modifiedTime)`);if(!r.ok)throw new Error(`API ${r.status}`);const d=await r.json();setFiles(d.files||[])}catch(e){setErr(e.message)}setLd(false)};
-
-  const parse=async(f)=>{setPs(p=>({...p,[f.id]:"loading"}));
-    try{let txt="";
-      if(f.mimeType==="application/vnd.google-apps.document"){const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain&key=${ds.apiKey}`);if(!r.ok)throw new Error("Export failed");txt=await r.text()}
-      else{const r=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&key=${ds.apiKey}`);if(!r.ok)throw new Error("Download failed");txt=await r.text()}
-      const ar=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:4000,messages:[{role:"user",content:`You are a Spanish lesson parser. Extract vocabulary and sentences from this lesson document.\n\nReturn ONLY valid JSON (no markdown, no backticks):\n{"lesson_id":"short id like 3.1","title":"title","vocabulary":[{"spanish":"word","english":"translation","pos":"verb-AR|verb-ER|verb-IR|verb-irregular|noun|phrase|adjective|adverb|question|number|conjunction|interjection","tags":["tags"]}],"sentences":[{"es":"Spanish","en":"English"}]}\n\nExtract ALL vocabulary. Identify verb types. Create practice sentences.\n\nDocument:\n${txt.slice(0,8000)}`}]})});
-      if(!ar.ok)throw new Error("AI parse failed");const ad=await ar.json();const tx=ad.content.map(c=>c.text||"").join("\n").replace(/```json|```/g,"").trim();const pd=JSON.parse(tx);
-      const nl={id:pd.lesson_id||`d${Date.now()}`,title:pd.title||f.name,date:new Date().toISOString().split("T")[0],sentences:pd.sentences||[],items:(pd.vocabulary||[]).map((v,i)=>({id:`d-${f.id}-${i}`,spanish:v.spanish,english:v.english,pos:v.pos||"phrase",tags:v.tags||[],lesson:pd.lesson_id||`d${Date.now()}`,confidence:0,lastSeen:null,nextReview:null,favorite:false}))};
-      if(nl.items.length)sl(p=>{const x=p.findIndex(l=>l.id===nl.id);if(x>=0){const n=[...p];n[x]=nl;return n}return[...p,nl]});
-      setPs(p=>({...p,[f.id]:`done-${nl.items.length}`}))
-    }catch(e){console.error(e);setPs(p=>({...p,[f.id]:`err-${e.message}`}))}};
+  const disconnect=()=>{sds({folderId:"",apiKey:""});localStorage.removeItem("lengua-drive");localStorage.removeItem("lengua-imported");setShowSetup(true)};
+  const resync=()=>{localStorage.removeItem("lengua-imported");onSync()};
 
   return <div style={mob?Z.pgM:Z.pg}>
-    <h1 style={mob?Z.h1M:Z.h1}>Google Drive</h1><p style={Z.sub}>Import lesson documents from a shared folder</p>
-    <div style={{...(mob?Z.cardM:Z.card),marginBottom:20}}><h3 style={Z.ch}>Setup</h3><ol style={{fontSize:mob?13:14,color:"#495057",lineHeight:1.8,paddingLeft:20,margin:0}}>
-      <li>Share a Drive folder as <strong>"Anyone with the link"</strong></li>
-      <li>Copy the folder ID from the URL (after <code>/folders/</code>)</li>
-      <li>At <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style={{color:"#e76f51"}}>Google Cloud Console</a> → Create project → Enable Drive API → Create API Key</li>
-      <li>Paste both below and click Scan</li>
-    </ol></div>
-    <div style={{...(mob?Z.cardM:Z.card),marginBottom:20}}><h3 style={Z.ch}>Connection</h3>
-      <div style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>Folder ID</label><input style={{...Z.inp,width:"100%"}} placeholder="1aBcDeFgHiJk..." value={ds.folderId} onChange={e=>sds(s=>({...s,folderId:e.target.value}))}/></div>
-      <div style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>API Key</label><input style={{...Z.inp,width:"100%"}} type="password" placeholder="AIza..." value={ds.apiKey} onChange={e=>sds(s=>({...s,apiKey:e.target.value}))}/></div>
-      <button style={mob?Z.startBtnM:Z.startBtn} onClick={scan} disabled={ld}>{ld?"Scanning...":"Scan Folder"}</button>
-      {err&&<p style={{color:"#c1121f",fontSize:13,marginTop:8}}>{err}</p>}
-    </div>
-    {files.length>0&&<div style={mob?Z.cardM:Z.card}><h3 style={Z.ch}>Files Found ({files.length})</h3>
-      {files.map(f=><div key={f.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid #f0f0f0"}}>
-        <div><div style={{fontSize:14,fontWeight:600,color:"#1d3557"}}>{f.name}</div><div style={{fontSize:12,color:"#868e96"}}>{f.mimeType?.split(".").pop()}{f.modifiedTime?` · ${new Date(f.modifiedTime).toLocaleDateString()}`:""}</div></div>
-        <div>{ps[f.id]==="loading"?<span style={{fontSize:13,color:"#e09f3e"}}>Parsing...</span>:ps[f.id]?.startsWith("done")?<span style={{fontSize:13,color:"#2d6a4f"}}>✓ {ps[f.id].split("-")[1]} items</span>:ps[f.id]?.startsWith("err")?<span style={{fontSize:13,color:"#c1121f"}}>Error</span>:<button style={{padding:"6px 16px",borderRadius:6,border:"none",background:"#e76f51",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}} onClick={()=>parse(f)}>Import</button>}</div>
-      </div>)}
+    <h1 style={mob?Z.h1M:Z.h1}>Google Drive Sync</h1><p style={Z.sub}>Automatically import vocabulary from your homework folder</p>
+
+    {connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16,borderLeft:"4px solid #2d6a4f"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{width:10,height:10,borderRadius:"50%",background:sync.syncing?"#e09f3e":"#2d6a4f",display:"inline-block"}}/>
+          <span style={{fontSize:14,fontWeight:600,color:"#1d3557"}}>{sync.syncing?"Syncing...":"Connected"}</span>
+        </div>
+        <button style={{padding:"6px 14px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"}} onClick={onSync} disabled={sync.syncing}>Sync Now</button>
+      </div>
+      {sync.lastSync&&<div style={{marginTop:10,fontSize:13,color:"#868e96"}}>
+        Last sync: {new Date(sync.lastSync).toLocaleString()} · {sync.totalFiles||0} files in folder · {imported.length} imported
+      </div>}
+      {sync.newWords>0&&<div style={{marginTop:6,fontSize:13,color:"#2d6a4f",fontWeight:600}}>+{sync.newWords} new words added from {sync.newFiles} new file{sync.newFiles!==1?"s":""}</div>}
+      {sync.newFiles===0&&sync.lastSync&&!sync.syncing&&<div style={{marginTop:6,fontSize:13,color:"#868e96"}}>Everything up to date</div>}
+      {sync.error&&<div style={{marginTop:6,fontSize:13,color:"#c1121f"}}>{sync.error}</div>}
     </div>}
+
+    {connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
+      <h3 style={Z.ch}>How it works</h3>
+      <div style={{fontSize:14,color:"#495057",lineHeight:1.7}}>
+        <p style={{marginBottom:8}}>Your Drive folder is linked. New homework documents are automatically detected and parsed each time you open the app.</p>
+        <p style={{marginBottom:8}}>Format your docs with vocabulary like:</p>
+        <div style={{background:"#fafaf8",borderRadius:8,padding:"12px 16px",fontSize:13,fontFamily:"monospace",color:"#264653",marginBottom:8,lineHeight:1.6}}>
+          hola - hello<br/>buenos días - good morning<br/>hablar - to speak<br/>el libro - the book
+        </div>
+        <p style={{fontSize:13,color:"#868e96"}}>Supports patterns: <code>word - translation</code>, <code>word = translation</code>, <code>word: translation</code></p>
+      </div>
+    </div>}
+
+    {connected&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+      <button style={{padding:"8px 16px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"}} onClick={()=>setShowSetup(x=>!x)}>{showSetup?"Hide":"Edit"} Settings</button>
+      <button style={{padding:"8px 16px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"}} onClick={resync}>Re-import All Files</button>
+      <button style={{padding:"8px 16px",borderRadius:6,border:"1px solid #fde8e8",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#c1121f"}} onClick={disconnect}>Disconnect</button>
+    </div>}
+
+    {showSetup&&<>
+      {!connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}><h3 style={Z.ch}>One-time Setup</h3><ol style={{fontSize:mob?13:14,color:"#495057",lineHeight:1.8,paddingLeft:20,margin:0}}>
+        <li>Create a folder in Google Drive for your homework docs</li>
+        <li>Share it as <strong>"Anyone with the link"</strong> (Viewer)</li>
+        <li>Copy the folder ID from the URL (the part after <code>/folders/</code>)</li>
+        <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style={{color:"#e76f51"}}>Google Cloud Console</a> → New Project → Enable <strong>Google Drive API</strong> → Create <strong>API Key</strong></li>
+        <li>Paste both below and hit Connect</li>
+      </ol></div>}
+      <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}><h3 style={Z.ch}>{connected?"Settings":"Connection"}</h3>
+        <div style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>Folder ID</label><input style={{...Z.inp,width:"100%"}} placeholder="1aBcDeFgHiJk..." value={ds.folderId} onChange={e=>sds(s=>({...s,folderId:e.target.value}))}/></div>
+        <div style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>API Key</label><input style={{...Z.inp,width:"100%"}} type="password" placeholder="AIza..." value={ds.apiKey} onChange={e=>sds(s=>({...s,apiKey:e.target.value}))}/></div>
+        <button style={mob?Z.startBtnM:Z.startBtn} onClick={()=>{setShowSetup(false);onSync()}} disabled={!ds.folderId||!ds.apiKey||sync.syncing}>{sync.syncing?"Connecting...":"Connect & Sync"}</button>
+      </div>
+    </>}
   </div>;
 }
 
