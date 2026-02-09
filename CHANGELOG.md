@@ -2,6 +2,14 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [1.4.0] - 2026-02-09
+
+### Added
+- Sortable dictionary columns — click any column header (Spanish, English, Type, Source, Status) to sort ascending/descending
+- Inline editing — click any word row to edit all fields (Spanish, English, Type, Source, Status) with Save/Cancel
+- Mobile sort dropdown for column sorting on small screens
+- Mobile card edit mode with stacked labeled inputs
+
 ## [1.3.0] - 2026-02-09
 
 ### Added
