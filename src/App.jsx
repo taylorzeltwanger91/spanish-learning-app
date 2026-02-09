@@ -222,6 +222,7 @@ const IC = {
   del:<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
   arr:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
   star:(f)=><svg width="16" height="16" viewBox="0 0 24 24" fill={f?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  gear:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
 };
 
 // Local parser: extracts vocabulary and sentences from lesson text
@@ -388,7 +389,7 @@ export default function App() {
           {mob&&<button style={{...Z.hamBtn,marginLeft:"auto",color:"#fff"}} onClick={()=>setSideOpen(false)}>{IC_close}</button>}
         </div>
         <div style={Z.sNav}>
-          {[["home","Inicio",IC.home],["practice","Tarjetas",IC.cards],["sentences","Oraciones",IC.build],["dictionary","Diccionario",IC.book],["progress","Progreso",IC.chart],["drive","Drive",IC.drive]].map(([id,lb,ic])=>(
+          {[["home","Inicio",IC.home],["practice","Tarjetas",IC.cards],["sentences","Oraciones",IC.build],["dictionary","Diccionario",IC.book],["progress","Progreso",IC.chart],["drive","Drive",IC.drive],["settings","Settings",IC.gear]].map(([id,lb,ic])=>(
             <button key={id} onClick={()=>nav(id)} style={{...Z.nBtn,...(view===id?Z.nAct:{})}}><span style={{opacity:view===id?1:.6}}>{ic}</span><span>{lb}</span></button>
           ))}
         </div>
@@ -401,6 +402,7 @@ export default function App() {
         {view==="dictionary"&&<Dict all={all} custom={custom} addC={addC} delC={delC} upd={upd} lessons={lessons} mob={mob}/>}
         {view==="progress"&&<Prog st={st} all={all} lessons={lessons} hist={hist} mob={mob}/>}
         {view==="drive"&&<Drive ds={ds} sds={setDs} lessons={lessons} sl={setLessons} mob={mob} sync={driveSync} onSync={()=>syncDrive(ds,lessons,setLessons,setDriveSync)}/>}
+        {view==="settings"&&<Settings mob={mob}/>}
       </main>
     </div>
   );
@@ -637,6 +639,88 @@ function ResultCard({c,w,s,again,finish,title,labels,mob}) {
     </div>
     <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:24,flexDirection:mob?"column":"row"}}><button style={btn} onClick={again}>Again</button><button style={{...btn,background:"#4a4e69"}} onClick={finish}>Finish</button></div>
   </div></div>;
+}
+
+const CHANGELOG = [
+  {
+    version: "1.3.0", date: "2026-02-09",
+    added: ["In-app Settings page with changelog visible to all users"],
+  },
+  {
+    version: "1.2.0", date: "2026-02-09",
+    added: [
+      "Auto-sync Google Drive integration — link a folder once, new docs are automatically imported on each app load",
+      "Local vocabulary parser — works offline, no external API needed",
+      "Credentials and import history saved to localStorage",
+      "Sync Now, Re-import All, and Disconnect controls",
+    ],
+    removed: ["Anthropic API dependency for document parsing", "Manual per-file Import button workflow"],
+  },
+  {
+    version: "1.1.0", date: "2026-02-09",
+    added: [
+      "Full mobile responsiveness for phone-friendly experience",
+      "Collapsible sidebar with hamburger menu on mobile",
+      "Fixed mobile header bar with logo and due-count badge",
+      "Card-based dictionary layout on mobile",
+      "Responsive typography, padding, and stacked layouts",
+    ],
+  },
+  {
+    version: "1.0.0", date: "2026-02-09",
+    added: [
+      "Initial release of Lengua Spanish Learning App",
+      "6 built-in lessons: greetings, AR/ER/IR verbs, irregular verbs, numbers, questions",
+      "Flashcard practice with spaced repetition",
+      "Sentence builder exercises",
+      "Vocabulary dictionary with search and filtering",
+      "Progress tracking with mastery stats",
+      "GitHub Pages deployment",
+    ],
+  },
+];
+
+function Settings({mob}) {
+  return <div style={mob?Z.pgM:Z.pg}>
+    <h1 style={mob?Z.h1M:Z.h1}>Settings</h1><p style={Z.sub}>App info and changelog</p>
+
+    <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+        <div style={Z.logo}>ñ</div>
+        <div>
+          <div style={{fontSize:18,fontWeight:700,fontFamily:"'DM Serif Display',serif",color:"#1d3557"}}>Lengua</div>
+          <div style={{fontSize:13,color:"#868e96"}}>Version {CHANGELOG[0].version}</div>
+        </div>
+      </div>
+      <p style={{fontSize:14,color:"#495057",lineHeight:1.6}}>A Spanish vocabulary and sentence practice app with spaced repetition and Google Drive sync.</p>
+    </div>
+
+    <div style={{...(mob?Z.cardM:Z.card)}}>
+      <h3 style={Z.ch}>Changelog</h3>
+      {CHANGELOG.map(rel=><div key={rel.version} style={{marginBottom:24}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <span style={{fontSize:16,fontWeight:700,fontFamily:"'DM Serif Display',serif",color:"#1d3557"}}>v{rel.version}</span>
+          <span style={{fontSize:12,color:"#868e96",padding:"2px 8px",background:"#f0f0f0",borderRadius:4}}>{rel.date}</span>
+        </div>
+        {rel.added&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,letterSpacing:.5,color:"#2d6a4f",marginBottom:4}}>ADDED</div>
+          {rel.added.map((item,i)=><div key={i} style={{fontSize:14,color:"#495057",padding:"4px 0 4px 14px",borderLeft:"2px solid #d8f3dc",marginBottom:2,lineHeight:1.5}}>{item}</div>)}
+        </div>}
+        {rel.changed&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,letterSpacing:.5,color:"#e09f3e",marginBottom:4}}>CHANGED</div>
+          {rel.changed.map((item,i)=><div key={i} style={{fontSize:14,color:"#495057",padding:"4px 0 4px 14px",borderLeft:"2px solid #fef3cd",marginBottom:2,lineHeight:1.5}}>{item}</div>)}
+        </div>}
+        {rel.fixed&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,letterSpacing:.5,color:"#264653",marginBottom:4}}>FIXED</div>
+          {rel.fixed.map((item,i)=><div key={i} style={{fontSize:14,color:"#495057",padding:"4px 0 4px 14px",borderLeft:"2px solid #dee2e6",marginBottom:2,lineHeight:1.5}}>{item}</div>)}
+        </div>}
+        {rel.removed&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:12,fontWeight:700,letterSpacing:.5,color:"#c1121f",marginBottom:4}}>REMOVED</div>
+          {rel.removed.map((item,i)=><div key={i} style={{fontSize:14,color:"#495057",padding:"4px 0 4px 14px",borderLeft:"2px solid #fde8e8",marginBottom:2,lineHeight:1.5}}>{item}</div>)}
+        </div>}
+      </div>)}
+    </div>
+  </div>;
 }
 
 const CSS=`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Serif+Display&display=swap');

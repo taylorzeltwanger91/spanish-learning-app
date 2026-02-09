@@ -2,6 +2,11 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [1.3.0] - 2026-02-09
+
+### Added
+- In-app Settings page with changelog visible to all users
+
 ## [1.2.0] - 2026-02-09
 
 ### Added
