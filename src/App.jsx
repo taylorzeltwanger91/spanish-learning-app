@@ -12,20 +12,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-let firebaseApp = null, auth = null, db = null, googleProvider = null;
-try {
-  if (firebaseConfig.apiKey) {
-    firebaseApp = initializeApp(firebaseConfig);
-    auth = getAuth(firebaseApp);
-    db = getFirestore(firebaseApp);
-    googleProvider = new GoogleAuthProvider();
-  }
-} catch(e) { console.warn("Firebase init failed:", e.message); }
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
 
 // Debounced Firestore save — waits 2s after last change before writing
 let _saveTimer = null;
 function saveToFirestore(uid, data) {
-  if (!db || !uid) return;
+  if (!uid) return;
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(async () => {
     try {
@@ -35,7 +30,7 @@ function saveToFirestore(uid, data) {
 }
 
 async function loadFromFirestore(uid) {
-  if (!db || !uid) return null;
+  if (!uid) return null;
   try {
     const snap = await getDoc(doc(db, "users", uid));
     return snap.exists() ? snap.data() : null;
@@ -585,7 +580,7 @@ const IC_close=<svg width="24" height="24" viewBox="0 0 24 24" fill="none" strok
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(!!auth);
+  const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
 
   const [view, setView] = useState("home");
@@ -614,7 +609,6 @@ export default function App() {
 
   // Auth state listener
   useEffect(() => {
-    if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
@@ -715,7 +709,6 @@ export default function App() {
   const nav = useCallback(id=>{setView(id);setSideOpen(false)},[]);
 
   const handleSignOut = useCallback(async () => {
-    if (!auth) return;
     try { await signOut(auth); } catch(e) { /* ignore */ }
   }, []);
 
@@ -724,8 +717,8 @@ export default function App() {
   // Show loading splash while checking auth
   if (authLoading || dataLoading) return <LoadingSplash />;
 
-  // Show auth screen when not signed in (only if Firebase is configured)
-  if (auth && !user) return <AuthScreen />;
+  // Show auth screen when not signed in
+  if (!user) return <AuthScreen />;
 
   return (
     <div style={Z.app}><style>{CSS}</style>
