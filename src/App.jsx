@@ -246,10 +246,10 @@ function useSpeech() {
     if(listening){try{recRef.current&&recRef.current.stop()}catch(e){}setListening(false);return}
     try{
       const r=new SR();
-      r.lang="es-ES";r.interimResults=false;r.maxAlternatives=3;
+      r.lang="es-ES";r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
       r.onresult=ev=>{
-        const alts=[];for(let i=0;i<ev.results[0].length;i++)alts.push(ev.results[0][i].transcript);
-        setText(alts[0]||"");
+        let t="";for(let i=0;i<ev.results.length;i++)t+=ev.results[i][0].transcript;
+        setText(t);
       };
       r.onerror=()=>setListening(false);
       r.onend=()=>setListening(false);
@@ -550,32 +550,67 @@ function Flashcards({fi,pf,sf,pm,spm,lessons,upd,sh,mob}) {
 
 function Sentences({fs,pf,sf,lessons,mob}) {
   const [q,setQ]=useState([]);const [ci,setCi]=useState(0);const [placed,setPlaced]=useState([]);const [avail,setAvail]=useState([]);const [res,setRes]=useState(null);const [on,setOn]=useState(false);const [sc,setSc]=useState({c:0,w:0,t:0});const [hint,setHint]=useState(false);
+  const [mode,setMode]=useState("build");const [typed,setTyped]=useState("");
+  const speech=useSpeech();const typedRef=useRef(null);
 
-  const setup=s=>{const w=s.es.match(/[¿¡]?[\wáéíóúñüÁÉÍÓÚÑÜ]+[.,?!]?/gi)||[];setPlaced([]);setAvail(shuffle(w.map((x,i)=>({id:i,word:x}))));setRes(null);setHint(false)};
-  const go=useCallback(()=>{const qq=shuffle(fs).slice(0,10);setQ(qq);setCi(0);setSc({c:0,w:0,t:qq.length});setOn(true);setRes(null);if(qq.length)setup(qq[0])},[fs]);
+  const setup=s=>{const w=s.es.match(/[¿¡]?[\wáéíóúñüÁÉÍÓÚÑÜ]+[.,?!]?/gi)||[];setPlaced([]);setAvail(shuffle(w.map((x,i)=>({id:i,word:x}))));setRes(null);setHint(false);setTyped("");speech.setText("")};
+  const go=useCallback(()=>{const qq=shuffle(fs).slice(0,10);setQ(qq);setCi(0);setSc({c:0,w:0,t:qq.length});setOn(true);setRes(null);if(qq.length)setup(qq[0]);if(mode==="type")setTimeout(()=>typedRef.current&&typedRef.current.focus(),100)},[fs,mode]);
   const cur=q[ci],done=ci>=q.length&&on;
   const add=w=>{setPlaced(p=>[...p,w]);setAvail(a=>a.filter(x=>x.id!==w.id))};
   const rem=w=>{setAvail(a=>[...a,w]);setPlaced(p=>p.filter(x=>x.id!==w.id))};
-  const norm=s=>s.replace(/\s+/g," ").trim().toLowerCase();
-  const check=()=>{if(!cur)return;const att=placed.map(w=>w.word).join(" ");if(norm(att)===norm(cur.es)){setRes("y");setSc(s=>({...s,c:s.c+1}))}else{setRes("n");setSc(s=>({...s,w:s.w+1}))}};
-  const next=()=>{const n=ci+1;setCi(n);if(n<q.length)setup(q[n])};
+  const normS=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[¿¡.,?!]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+  const check=()=>{
+    if(!cur)return;
+    if(speech.listening)speech.toggle();
+    const att=mode==="type"?typed:placed.map(w=>w.word).join(" ");
+    if(normS(att)===normS(cur.es)){setRes("y");setSc(s=>({...s,c:s.c+1}))}else{setRes("n");setSc(s=>({...s,w:s.w+1}))}
+  };
+  const next=()=>{const n=ci+1;setCi(n);if(n<q.length)setup(q[n]);if(mode==="type")setTimeout(()=>typedRef.current&&typedRef.current.focus(),50)};
+  const hasInput=mode==="type"?typed.trim().length>0:placed.length>0;
+
+  // sync speech text into typed input
+  useEffect(()=>{if(speech.text&&mode==="type")setTyped(speech.text)},[speech.text,mode]);
+
+  // keyboard: Enter to check/next in type mode
+  useEffect(()=>{
+    if(mode!=="type"||!on||done)return;
+    const h=e=>{if(e.key==="Enter"){e.preventDefault();if(res)next();else if(typed.trim())check()}};
+    window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);
+  },[mode,on,done,res,typed,check,next]);
+
+  const modeBtn=(m,label)=>({padding:mob?"6px 10px":"6px 14px",borderRadius:6,border:"1px solid #dee2e6",background:mode===m?"#1d3557":"#fff",color:mode===m?"#fff":"#868e96",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"});
 
   return <div style={mob?Z.pgM:Z.pg}>
-    <h1 style={mob?Z.h1M:Z.h1}>Oraciones</h1><p style={Z.sub}>Build sentences by arranging words in the correct order</p>
-    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>{IC.filt}<select style={{...Z.sel,...(mob?{flex:1}:{})}} value={pf.lesson} onChange={e=>sf(f=>({...f,lesson:e.target.value}))}><option value="all">All Lessons</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id} – {l.title}</option>)}</select></div>
+    <h1 style={mob?Z.h1M:Z.h1}>Oraciones</h1><p style={Z.sub}>Build or type sentences in Spanish</p>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:mob?"flex-start":"center",gap:mob?8:12,marginBottom:16,flexWrap:"wrap",flexDirection:mob?"column":"row"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,width:mob?"100%":"auto"}}>{IC.filt}<select style={{...Z.sel,...(mob?{flex:1}:{})}} value={pf.lesson} onChange={e=>sf(f=>({...f,lesson:e.target.value}))}><option value="all">All Lessons</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id} – {l.title}</option>)}</select></div>
+      <div style={{display:"flex",gap:4}}><button style={modeBtn("build")} onClick={()=>setMode("build")}>Build</button><button style={modeBtn("type")} onClick={()=>setMode("type")}>Type / Speak</button></div>
+    </div>
     <p style={{fontSize:13,color:"#868e96",marginBottom:20}}>{fs.length} sentences available</p>
-    {!on&&<div style={{textAlign:"center",padding:mob?"40px 0":"60px 0"}}><button style={mob?Z.startBtnM:Z.startBtn} onClick={go} disabled={!fs.length}>Start Sentence Practice</button><p style={{fontSize:13,color:"#868e96",marginTop:12}}>Read the English · Build the Spanish</p></div>}
+    {!on&&<div style={{textAlign:"center",padding:mob?"40px 0":"60px 0"}}><button style={mob?Z.startBtnM:Z.startBtn} onClick={go} disabled={!fs.length}>Start Sentence Practice</button><p style={{fontSize:13,color:"#868e96",marginTop:12}}>{mode==="build"?"Read the English · Build the Spanish":"Read the English · Type or speak the Spanish"}</p></div>}
     {on&&!done&&cur&&<div style={{maxWidth:640,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:mob?8:12,marginBottom:mob?16:24,fontSize:13,color:"#868e96"}}><span>{ci+1}/{q.length}</span><div style={{flex:1,height:4,background:"#e9ecef",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#e76f51,#f4a261)",borderRadius:2,width:`${ci/q.length*100}%`,transition:"width .3s"}}/></div><span style={{color:"#2d6a4f"}}>✓{sc.c}</span><span style={{color:"#c1121f"}}>✗{sc.w}</span></div>
       <div style={{...Z.prompt,...(mob?{padding:"20px 16px"}:{})}}><div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#868e96",marginBottom:8}}>TRANSLATE TO SPANISH</div><div style={{fontSize:mob?18:22,fontWeight:600,fontFamily:"'DM Serif Display',serif",color:"#1d3557",lineHeight:1.4}}>{cur.en}</div><div style={{fontSize:12,color:"#adb5bd",marginTop:8}}>Lesson {cur.lesson}</div></div>
-      <div style={Z.drop}>{!placed.length&&<span style={{color:"#ccc",fontSize:mob?13:14,fontStyle:"italic"}}>Tap words to build the sentence...</span>}{placed.map(w=><button key={w.id} onClick={()=>!res&&rem(w)} style={{...Z.chip,...(mob?{padding:"6px 12px",fontSize:14}:{}),...(res==="y"?{background:"#d8f3dc",borderColor:"#2d6a4f",color:"#2d6a4f"}:{}),...(res==="n"?{background:"#fde8e8",borderColor:"#c1121f",color:"#c1121f"}:{}),cursor:res?"default":"pointer"}}>{w.word}</button>)}</div>
-      {!res&&<div style={Z.bank}>{avail.map(w=><button key={w.id} onClick={()=>add(w)} style={{...Z.chipB,...(mob?{padding:"6px 12px",fontSize:14}:{})}}>{w.word}</button>)}{!avail.length&&placed.length>0&&<span style={{color:"#adb5bd",fontSize:13}}>All words placed!</span>}</div>}
-      {!res&&<div style={{display:"flex",gap:mob?6:10,marginTop:mob?12:20,justifyContent:"center",flexWrap:"wrap"}}>
-        <button style={{...Z.aBtn,background:"#1d3557",color:"#fff",maxWidth:mob?"100%":200,flex:mob?"1 1 100%":"1"}} onClick={check} disabled={!placed.length}>Check Answer</button>
-        <button style={{...Z.aBtn,background:"#f0f0f0",color:"#495057",maxWidth:mob?"48%":140,flex:mob?"1":"1"}} onClick={()=>setHint(true)}>Hint</button>
-        <button style={{...Z.aBtn,background:"#f0f0f0",color:"#495057",maxWidth:mob?"48%":140,flex:mob?"1":"1"}} onClick={()=>{setRes("n");setSc(s=>({...s,w:s.w+1}))}}>Skip</button>
+
+      {mode==="build"&&<>
+        <div style={Z.drop}>{!placed.length&&<span style={{color:"#ccc",fontSize:mob?13:14,fontStyle:"italic"}}>Tap words to build the sentence...</span>}{placed.map(w=><button key={w.id} onClick={()=>!res&&rem(w)} style={{...Z.chip,...(mob?{padding:"6px 12px",fontSize:14}:{}),...(res==="y"?{background:"#d8f3dc",borderColor:"#2d6a4f",color:"#2d6a4f"}:{}),...(res==="n"?{background:"#fde8e8",borderColor:"#c1121f",color:"#c1121f"}:{}),cursor:res?"default":"pointer"}}>{w.word}</button>)}</div>
+        {!res&&<div style={Z.bank}>{avail.map(w=><button key={w.id} onClick={()=>add(w)} style={{...Z.chipB,...(mob?{padding:"6px 12px",fontSize:14}:{})}}>{w.word}</button>)}{!avail.length&&placed.length>0&&<span style={{color:"#adb5bd",fontSize:13}}>All words placed!</span>}</div>}
+      </>}
+
+      {mode==="type"&&<div style={{marginBottom:16}}>
+        <div style={Z.conjInput}>
+          <input ref={typedRef} style={{...Z.conjInp,fontSize:16,textAlign:"left",...(res==="y"?{borderColor:"#2d6a4f",background:"#f0faf0"}:{}),...(res==="n"?{borderColor:"#c1121f",background:"#fef5f5"}:{})}} value={typed} onChange={e=>!res&&setTyped(e.target.value)} placeholder="Type or speak the sentence..." disabled={!!res} autoComplete="off" autoCapitalize="off" spellCheck="false"/>
+          {speech.supported&&<button onClick={speech.toggle} className={speech.listening?"mic-pulse":""} style={{...Z.micBtn,...(speech.listening?Z.micBtnActive:{})}}>{IC.mic}</button>}
+        </div>
+        {speech.listening&&<div style={{fontSize:12,color:"#c1121f",marginTop:6,textAlign:"center"}}>Listening... tap mic to stop</div>}
       </div>}
-      {hint&&!res&&<div style={{marginTop:12,padding:"12px 16px",background:"#fef3cd",borderRadius:8,fontSize:14,color:"#856404",textAlign:"center"}}>First word: <strong>{(cur.es.match(/[¿¡]?[\wáéíóúñüÁÉÍÓÚÑÜ]+/i)||[""])[0]}</strong></div>}
+
+      {!res&&<div style={{display:"flex",gap:mob?6:10,marginTop:mob?12:20,justifyContent:"center",flexWrap:"wrap"}}>
+        <button style={{...Z.aBtn,background:"#1d3557",color:"#fff",maxWidth:mob?"100%":200,flex:mob?"1 1 100%":"1"}} onClick={check} disabled={!hasInput}>Check Answer</button>
+        {mode==="build"&&<button style={{...Z.aBtn,background:"#f0f0f0",color:"#495057",maxWidth:mob?"48%":140,flex:mob?"1":"1"}} onClick={()=>setHint(true)}>Hint</button>}
+        <button style={{...Z.aBtn,background:"#f0f0f0",color:"#495057",maxWidth:mob?"48%":140,flex:mob?"1":"1"}} onClick={()=>{if(speech.listening)speech.toggle();setRes("n");setSc(s=>({...s,w:s.w+1}))}}>Skip</button>
+      </div>}
+      {hint&&!res&&mode==="build"&&<div style={{marginTop:12,padding:"12px 16px",background:"#fef3cd",borderRadius:8,fontSize:14,color:"#856404",textAlign:"center"}}>First word: <strong>{(cur.es.match(/[¿¡]?[\wáéíóúñüÁÉÍÓÚÑÜ]+/i)||[""])[0]}</strong></div>}
       {res&&<div style={{marginTop:20,textAlign:"center"}}>
         {res==="y"&&<div style={{fontSize:18,fontWeight:700,color:"#2d6a4f",marginBottom:8}}>✓ ¡Correcto!</div>}
         {res==="n"&&<div><div style={{fontSize:18,fontWeight:700,color:"#c1121f",marginBottom:8}}>✗ Not quite</div><div style={{padding:"12px 16px",background:"#f0f7f0",borderRadius:8,fontSize:15,color:"#2d6a4f",marginBottom:8}}>Correct: <strong>{cur.es}</strong></div></div>}
@@ -771,17 +806,18 @@ function Conjugacion({conjProg,updConj,mob}) {
 
   const check=useCallback(()=>{
     if(!cd||res)return;
+    if(speech.listening)speech.toggle();
     const correct=normConj(inp,cd.pron)===normConj(cd.answer,null);
     setRes(correct?"y":"n");updConj(cd.key,correct);setSs(s=>({...s,[correct?"c":"w"]:s[correct?"c":"w"]+1}));
-  },[cd,inp,res,updConj]);
+  },[cd,inp,res,updConj,speech]);
 
   const next=useCallback(()=>{
     setRes(null);setInp("");speech.setText("");setIdx(i=>i+1);
     setTimeout(()=>inpRef.current&&inpRef.current.focus(),50);
   },[speech]);
 
-  // auto-fill from speech
-  useEffect(()=>{if(speech.text){setInp(speech.text)}},[speech.text]);
+  // sync speech text into input (user can edit before submitting)
+  useEffect(()=>{if(speech.text)setInp(speech.text)},[speech.text]);
 
   // keyboard: Enter=check/next, Escape=skip
   useEffect(()=>{
@@ -856,11 +892,13 @@ function ResultCard({c,w,s,again,finish,title,labels,mob}) {
 
 const CHANGELOG = [
   {
-    version: "1.5.0", date: "2026-02-09",
+    version: "1.5.1", date: "2026-02-09",
     added: [
-      "Conjugation Practice page — practice present-tense verb conjugations for 25 verbs (125 cards)",
-      "Speech recognition input — tap the mic button to speak your answer in Spanish (Chrome, Edge, Safari)",
-      "Filter by verb type (AR/ER/IR/Irregular) and pronoun (yo/tú/él-ella/nosotros/ellos-ellas)",
+      "Conjugation Practice page — present-tense verb conjugations for 25 verbs (125 cards)",
+      "Speech recognition input on Conjugation and Sentences pages (Chrome, Edge, Safari)",
+      "Type / Speak mode for Sentences — type or dictate full sentences instead of word arrangement",
+      "Continuous speech recognition with real-time interim results for better accuracy",
+      "Filter conjugations by verb type (AR/ER/IR/Irregular) and pronoun",
       "Spaced repetition for conjugation progress with localStorage persistence",
     ],
   },
