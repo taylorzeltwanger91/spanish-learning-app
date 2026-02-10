@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 const LESSONS = [
   {
@@ -198,6 +198,68 @@ const LESSONS = [
 // Add default fields to all items
 LESSONS.forEach(l => l.items.forEach(i => { i.confidence = i.confidence ?? 0; i.lastSeen = i.lastSeen ?? null; i.nextReview = i.nextReview ?? null; i.favorite = i.favorite ?? false; }));
 
+const CONJUGATIONS = {
+  hablar:{type:"AR",english:"to speak",present:{yo:"hablo",tú:"hablas","él/ella":"habla",nosotros:"hablamos","ellos/ellas":"hablan"}},
+  trabajar:{type:"AR",english:"to work",present:{yo:"trabajo",tú:"trabajas","él/ella":"trabaja",nosotros:"trabajamos","ellos/ellas":"trabajan"}},
+  estudiar:{type:"AR",english:"to study",present:{yo:"estudio",tú:"estudias","él/ella":"estudia",nosotros:"estudiamos","ellos/ellas":"estudian"}},
+  necesitar:{type:"AR",english:"to need",present:{yo:"necesito",tú:"necesitas","él/ella":"necesita",nosotros:"necesitamos","ellos/ellas":"necesitan"}},
+  comprar:{type:"AR",english:"to buy",present:{yo:"compro",tú:"compras","él/ella":"compra",nosotros:"compramos","ellos/ellas":"compran"}},
+  cocinar:{type:"AR",english:"to cook",present:{yo:"cocino",tú:"cocinas","él/ella":"cocina",nosotros:"cocinamos","ellos/ellas":"cocinan"}},
+  caminar:{type:"AR",english:"to walk",present:{yo:"camino",tú:"caminas","él/ella":"camina",nosotros:"caminamos","ellos/ellas":"caminan"}},
+  llamar:{type:"AR",english:"to call",present:{yo:"llamo",tú:"llamas","él/ella":"llama",nosotros:"llamamos","ellos/ellas":"llaman"}},
+  comer:{type:"ER",english:"to eat",present:{yo:"como",tú:"comes","él/ella":"come",nosotros:"comemos","ellos/ellas":"comen"}},
+  beber:{type:"ER",english:"to drink",present:{yo:"bebo",tú:"bebes","él/ella":"bebe",nosotros:"bebemos","ellos/ellas":"beben"}},
+  leer:{type:"ER",english:"to read",present:{yo:"leo",tú:"lees","él/ella":"lee",nosotros:"leemos","ellos/ellas":"leen"}},
+  correr:{type:"ER",english:"to run",present:{yo:"corro",tú:"corres","él/ella":"corre",nosotros:"corremos","ellos/ellas":"corren"}},
+  aprender:{type:"ER",english:"to learn",present:{yo:"aprendo",tú:"aprendes","él/ella":"aprende",nosotros:"aprendemos","ellos/ellas":"aprenden"}},
+  vivir:{type:"IR",english:"to live",present:{yo:"vivo",tú:"vives","él/ella":"vive",nosotros:"vivimos","ellos/ellas":"viven"}},
+  escribir:{type:"IR",english:"to write",present:{yo:"escribo",tú:"escribes","él/ella":"escribe",nosotros:"escribimos","ellos/ellas":"escriben"}},
+  abrir:{type:"IR",english:"to open",present:{yo:"abro",tú:"abres","él/ella":"abre",nosotros:"abrimos","ellos/ellas":"abren"}},
+  recibir:{type:"IR",english:"to receive",present:{yo:"recibo",tú:"recibes","él/ella":"recibe",nosotros:"recibimos","ellos/ellas":"reciben"}},
+  decidir:{type:"IR",english:"to decide",present:{yo:"decido",tú:"decides","él/ella":"decide",nosotros:"decidimos","ellos/ellas":"deciden"}},
+  tener:{type:"irregular",english:"to have",present:{yo:"tengo",tú:"tienes","él/ella":"tiene",nosotros:"tenemos","ellos/ellas":"tienen"}},
+  hacer:{type:"irregular",english:"to do / to make",present:{yo:"hago",tú:"haces","él/ella":"hace",nosotros:"hacemos","ellos/ellas":"hacen"}},
+  ir:{type:"irregular",english:"to go",present:{yo:"voy",tú:"vas","él/ella":"va",nosotros:"vamos","ellos/ellas":"van"}},
+  ser:{type:"irregular",english:"to be (permanent)",present:{yo:"soy",tú:"eres","él/ella":"es",nosotros:"somos","ellos/ellas":"son"}},
+  estar:{type:"irregular",english:"to be (temporary)",present:{yo:"estoy",tú:"estás","él/ella":"está",nosotros:"estamos","ellos/ellas":"están"}},
+  saber:{type:"irregular",english:"to know (facts)",present:{yo:"sé",tú:"sabes","él/ella":"sabe",nosotros:"sabemos","ellos/ellas":"saben"}},
+  poner:{type:"irregular",english:"to put / place",present:{yo:"pongo",tú:"pones","él/ella":"pone",nosotros:"ponemos","ellos/ellas":"ponen"}},
+};
+
+const PRONOUNS = ["yo","tú","él/ella","nosotros","ellos/ellas"];
+
+function normConj(s,pronoun) {
+  let t = s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  if(pronoun){const p=pronoun.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();t=t.replace(new RegExp("^"+p.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\s+"),"");}
+  return t;
+}
+
+function useSpeech() {
+  const [listening,setListening]=useState(false);
+  const [text,setText]=useState("");
+  const recRef=useRef(null);
+  const SR=typeof window!=="undefined"&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+  const supported=!!SR;
+
+  const toggle=useCallback(()=>{
+    if(!SR)return;
+    if(listening){try{recRef.current&&recRef.current.stop()}catch(e){}setListening(false);return}
+    try{
+      const r=new SR();
+      r.lang="es-ES";r.interimResults=false;r.maxAlternatives=3;
+      r.onresult=ev=>{
+        const alts=[];for(let i=0;i<ev.results[0].length;i++)alts.push(ev.results[0][i].transcript);
+        setText(alts[0]||"");
+      };
+      r.onerror=()=>setListening(false);
+      r.onend=()=>setListening(false);
+      r.start();recRef.current=r;setListening(true);
+    }catch(e){setListening(false)}
+  },[SR,listening]);
+
+  return {listening,text,supported,toggle,setText};
+}
+
 function shuffle(a) { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]} return b; }
 function getNextReview(c) { return Date.now()+[0,1,3,7,14,30][Math.min(c,5)]*864e5; }
 function isDue(i) { return !i.nextReview||Date.now()>=i.nextReview; }
@@ -223,6 +285,8 @@ const IC = {
   arr:<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
   star:(f)=><svg width="16" height="16" viewBox="0 0 24 24" fill={f?"currentColor":"none"} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   gear:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  mic:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
+  conj:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h7"/><path d="M18 14l3 3-3 3"/></svg>,
 };
 
 // Local parser: extracts vocabulary and sentences from lesson text
@@ -365,6 +429,11 @@ export default function App() {
   const [ds, setDs] = useState(()=>{try{const v=JSON.parse(localStorage.getItem("lengua-drive")||"null");return v&&v.folderId?v:{folderId:"",apiKey:""}}catch(e){return{folderId:"",apiKey:""}}});
   const [sideOpen, setSideOpen] = useState(false);
   const [driveSync, setDriveSync] = useState({syncing:false,lastSync:null,newFiles:0});
+  const [conjProg, setConjProg] = useState(()=>{try{return JSON.parse(localStorage.getItem("lengua-conj-progress")||"{}")}catch(e){return{}}});
+
+  // Persist conjugation progress
+  useEffect(()=>{localStorage.setItem("lengua-conj-progress",JSON.stringify(conjProg))},[conjProg]);
+  const updConj = useCallback((key,correct)=>{setConjProg(p=>{const prev=p[key]||{confidence:0,lastSeen:null,nextReview:null};const nc=correct?Math.min(prev.confidence+1,5):Math.max(prev.confidence-1,0);return{...p,[key]:{confidence:nc,lastSeen:Date.now(),nextReview:getNextReview(nc)}}})},[]);
 
   // Persist drive settings
   useEffect(()=>{if(ds.folderId||ds.apiKey)localStorage.setItem("lengua-drive",JSON.stringify(ds))},[ds]);
@@ -398,7 +467,7 @@ export default function App() {
           {mob&&<button style={{...Z.hamBtn,marginLeft:"auto",color:"#fff"}} onClick={()=>setSideOpen(false)}>{IC_close}</button>}
         </div>
         <div style={Z.sNav}>
-          {[["home","Inicio",IC.home],["practice","Tarjetas",IC.cards],["sentences","Oraciones",IC.build],["dictionary","Diccionario",IC.book],["progress","Progreso",IC.chart],["drive","Drive",IC.drive],["settings","Settings",IC.gear]].map(([id,lb,ic])=>(
+          {[["home","Inicio",IC.home],["practice","Tarjetas",IC.cards],["sentences","Oraciones",IC.build],["conjugation","Conjugación",IC.conj],["dictionary","Diccionario",IC.book],["progress","Progreso",IC.chart],["drive","Drive",IC.drive],["settings","Settings",IC.gear]].map(([id,lb,ic])=>(
             <button key={id} onClick={()=>nav(id)} style={{...Z.nBtn,...(view===id?Z.nAct:{})}}><span style={{opacity:view===id?1:.6}}>{ic}</span><span>{lb}</span></button>
           ))}
         </div>
@@ -408,6 +477,7 @@ export default function App() {
         {view==="home"&&<Home st={st} lessons={lessons} all={all} go={nav} sf={setPf} mob={mob}/>}
         {view==="practice"&&<Flashcards fi={fi} pf={pf} sf={setPf} pm={pm} spm={setPm} lessons={lessons} upd={upd} sh={setHist} mob={mob}/>}
         {view==="sentences"&&<Sentences fs={fs} pf={pf} sf={setPf} lessons={lessons} mob={mob}/>}
+        {view==="conjugation"&&<Conjugacion conjProg={conjProg} updConj={updConj} mob={mob}/>}
         {view==="dictionary"&&<Dict all={all} custom={custom} addC={addC} delC={delC} upd={upd} lessons={lessons} mob={mob}/>}
         {view==="progress"&&<Prog st={st} all={all} lessons={lessons} hist={hist} mob={mob}/>}
         {view==="drive"&&<Drive ds={ds} sds={setDs} lessons={lessons} sl={setLessons} mob={mob} sync={driveSync} onSync={()=>syncDrive(ds,lessons,setLessons,setDriveSync)}/>}
@@ -431,7 +501,7 @@ function Home({st,lessons,all,go,sf,mob}) {
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
         <div style={mob?Z.cardM:Z.card}><h3 style={Z.ch}>Quick Practice</h3>
-          {[["All Vocabulary","all","all","practice"],["AR Verbs","all","AR","practice"],["Irregular Verbs","all","irregular","practice"],["Sentence Builder","all","all","sentences"]].map(([lb,l,v,vw])=>(
+          {[["All Vocabulary","all","all","practice"],["AR Verbs","all","AR","practice"],["Irregular Verbs","all","irregular","practice"],["Sentence Builder","all","all","sentences"],["Conjugation Practice","all","all","conjugation"]].map(([lb,l,v,vw])=>(
             <button key={lb} style={Z.qBtn} onClick={()=>{sf({lesson:l,verbType:v});go(vw)}}><span>{lb}</span>{IC.arr}</button>
           ))}
         </div>
@@ -669,6 +739,109 @@ function Drive({ds,sds,mob,sync,onSync}) {
   </div>;
 }
 
+function Conjugacion({conjProg,updConj,mob}) {
+  const [dk,setDk]=useState([]);const [idx,setIdx]=useState(0);const [inp,setInp]=useState("");const [res,setRes]=useState(null);const [ss,setSs]=useState({c:0,w:0});const [on,setOn]=useState(false);
+  const [filtType,setFiltType]=useState("all");const [filtPron,setFiltPron]=useState("all");
+  const inpRef=useRef(null);
+  const speech=useSpeech();
+
+  const cards=useMemo(()=>{
+    let list=[];
+    for(const [verb,data] of Object.entries(CONJUGATIONS)){
+      if(filtType!=="all"&&data.type!==filtType)continue;
+      for(const pron of PRONOUNS){
+        if(filtPron!=="all"&&pron!==filtPron)continue;
+        const key=verb+"-"+pron;
+        const prog=conjProg[key]||{confidence:0,lastSeen:null,nextReview:null};
+        list.push({verb,pron,answer:data.present[pron],type:data.type,english:data.english,key,...prog});
+      }
+    }
+    return list;
+  },[filtType,filtPron,conjProg]);
+
+  const dueCount=cards.filter(c=>!c.nextReview||Date.now()>=c.nextReview).length;
+
+  const go=useCallback(()=>{
+    const due=cards.filter(c=>!c.nextReview||Date.now()>=c.nextReview);
+    setDk(shuffle(due.length>0?due:cards).slice(0,20));setIdx(0);setInp("");setRes(null);setSs({c:0,w:0});setOn(true);
+    setTimeout(()=>inpRef.current&&inpRef.current.focus(),100);
+  },[cards]);
+
+  const cd=dk[idx],done=idx>=dk.length&&on;
+
+  const check=useCallback(()=>{
+    if(!cd||res)return;
+    const correct=normConj(inp,cd.pron)===normConj(cd.answer,null);
+    setRes(correct?"y":"n");updConj(cd.key,correct);setSs(s=>({...s,[correct?"c":"w"]:s[correct?"c":"w"]+1}));
+  },[cd,inp,res,updConj]);
+
+  const next=useCallback(()=>{
+    setRes(null);setInp("");speech.setText("");setIdx(i=>i+1);
+    setTimeout(()=>inpRef.current&&inpRef.current.focus(),50);
+  },[speech]);
+
+  // auto-fill from speech
+  useEffect(()=>{if(speech.text){setInp(speech.text)}},[speech.text]);
+
+  // keyboard: Enter=check/next, Escape=skip
+  useEffect(()=>{
+    const h=e=>{
+      if(!on||done)return;
+      if(e.key==="Enter"){e.preventDefault();if(res)next();else check()}
+      if(e.key==="Escape"&&!res){setRes("n");updConj(cd.key,false);setSs(s=>({...s,w:s.w+1}))}
+    };
+    window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);
+  },[on,done,res,check,next,cd,updConj]);
+
+  const typeBadgeColor={AR:"#e76f51",ER:"#2a9d8f",IR:"#264653",irregular:"#9b2226"};
+
+  return <div style={mob?Z.pgM:Z.pg}>
+    <h1 style={mob?Z.h1M:Z.h1}>Conjugación</h1><p style={Z.sub}>Practice verb conjugations — type or speak your answer</p>
+
+    {!on&&!done&&<>
+      <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
+        <h3 style={Z.ch}>Filters</h3>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
+          <div><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>Verb Type</label>
+            <select style={Z.sel} value={filtType} onChange={e=>setFiltType(e.target.value)}><option value="all">All Types</option><option value="AR">AR</option><option value="ER">ER</option><option value="IR">IR</option><option value="irregular">Irregular</option></select>
+          </div>
+          <div><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>Pronoun</label>
+            <select style={Z.sel} value={filtPron} onChange={e=>setFiltPron(e.target.value)}><option value="all">All Pronouns</option>{PRONOUNS.map(p=><option key={p} value={p}>{p}</option>)}</select>
+          </div>
+        </div>
+        <p style={{fontSize:13,color:"#868e96"}}>{cards.length} cards · {dueCount} due</p>
+      </div>
+      <div style={{textAlign:"center",padding:mob?"40px 0":"60px 0"}}><button style={mob?Z.startBtnM:Z.startBtn} onClick={go} disabled={!cards.length}>Start Practice</button><p style={{fontSize:13,color:"#868e96",marginTop:12}}>Up to 20 cards · Due items first</p></div>
+    </>}
+
+    {on&&!done&&cd&&<div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+      <div style={{display:"flex",alignItems:"center",gap:mob?8:12,width:"100%",maxWidth:540,marginBottom:mob?12:20,fontSize:13,color:"#868e96"}}><span>{idx+1}/{dk.length}</span><div style={{flex:1,height:4,background:"#e9ecef",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#e76f51,#f4a261)",borderRadius:2,width:`${idx/dk.length*100}%`,transition:"width .3s"}}/></div><span style={{color:"#2d6a4f"}}>✓{ss.c}</span><span style={{color:"#c1121f"}}>✗{ss.w}</span></div>
+      <div style={mob?Z.conjCardM:Z.conjCard}>
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:12,flexWrap:"wrap"}}>
+          <span style={{...Z.posT,background:typeBadgeColor[cd.type]||"#e9ecef",color:"#fff"}}>{cd.type}</span>
+        </div>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"#868e96",textTransform:"uppercase",marginBottom:8}}>CONJUGATE</div>
+        <div style={{fontSize:mob?28:34,fontWeight:700,fontFamily:"'DM Serif Display',serif",color:"#1d3557",marginBottom:4}}>{cd.verb}</div>
+        <div style={{fontSize:14,color:"#868e96",marginBottom:16}}>{cd.english}</div>
+        <div style={Z.pronoun}>{cd.pron}</div>
+        <div style={Z.conjInput}>
+          <input ref={inpRef} style={{...Z.conjInp,...(res==="y"?{borderColor:"#2d6a4f",background:"#f0faf0"}:{}),...(res==="n"?{borderColor:"#c1121f",background:"#fef5f5"}:{})}} value={inp} onChange={e=>!res&&setInp(e.target.value)} placeholder="Type conjugation..." disabled={!!res} autoComplete="off" autoCapitalize="off" spellCheck="false"/>
+          {speech.supported&&<button onClick={speech.toggle} className={speech.listening?"mic-pulse":""} style={{...Z.micBtn,...(speech.listening?Z.micBtnActive:{})}}>{IC.mic}</button>}
+        </div>
+        {!res&&<div style={{display:"flex",gap:mob?6:10,marginTop:16,width:"100%",justifyContent:"center",flexDirection:mob?"column":"row"}}>
+          <button style={{...Z.aBtn,background:"#1d3557",color:"#fff",maxWidth:mob?"100%":200}} onClick={check} disabled={!inp.trim()}>Check</button>
+          <button style={{...Z.aBtn,background:"#f0f0f0",color:"#495057",maxWidth:mob?"100%":140}} onClick={()=>{setRes("n");updConj(cd.key,false);setSs(s=>({...s,w:s.w+1}))}}>Skip</button>
+        </div>}
+        {res==="y"&&<div style={{marginTop:16,fontSize:18,fontWeight:700,color:"#2d6a4f"}}>Correct!</div>}
+        {res==="n"&&<div style={{marginTop:16,textAlign:"center"}}><div style={{fontSize:18,fontWeight:700,color:"#c1121f",marginBottom:6}}>Incorrect</div><div style={{fontSize:15,color:"#495057"}}>Correct answer: <strong style={{color:"#2d6a4f"}}>{cd.answer}</strong></div></div>}
+        {res&&<button style={{...(mob?Z.startBtnM:Z.startBtn),marginTop:16}} onClick={next}>Next →</button>}
+      </div>
+    </div>}
+
+    {done&&<ResultCard c={ss.c} w={ss.w} again={go} finish={()=>{setOn(false);setDk([]);setIdx(0)}} title="¡Bien hecho!" labels={["Correct","Incorrect"]} mob={mob}/>}
+  </div>;
+}
+
 function ResultCard({c,w,s,again,finish,title,labels,mob}) {
   const btn=mob?Z.startBtnM:Z.startBtn;
   return <div style={{display:"flex",justifyContent:"center",padding:mob?"20px 0":"40px 0"}}><div style={mob?Z.resCardM:Z.resCard}>
@@ -682,6 +855,22 @@ function ResultCard({c,w,s,again,finish,title,labels,mob}) {
 }
 
 const CHANGELOG = [
+  {
+    version: "1.5.0", date: "2026-02-09",
+    added: [
+      "Conjugation Practice page — practice present-tense verb conjugations for 25 verbs (125 cards)",
+      "Speech recognition input — tap the mic button to speak your answer in Spanish (Chrome, Edge, Safari)",
+      "Filter by verb type (AR/ER/IR/Irregular) and pronoun (yo/tú/él-ella/nosotros/ellos-ellas)",
+      "Spaced repetition for conjugation progress with localStorage persistence",
+    ],
+  },
+  {
+    version: "1.4.0", date: "2026-02-09",
+    added: [
+      "Sortable dictionary columns — click any column header to sort ascending/descending",
+      "Inline editing — click any word row to edit all fields with Save/Cancel",
+    ],
+  },
   {
     version: "1.3.0", date: "2026-02-09",
     added: ["In-app Settings page with changelog visible to all users"],
@@ -769,6 +958,7 @@ const CSS=`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,op
 .fch{cursor:pointer;transition:transform .15s,box-shadow .15s}.fch:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,.12)}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.7}}.mic-pulse{animation:pulse 1.2s ease-in-out infinite}
 @media(max-width:768px){.fch:hover{transform:none;box-shadow:0 8px 32px rgba(0,0,0,.08)}}`;
 
 const Z={
@@ -829,4 +1019,11 @@ const Z={
   addBtn:{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",borderRadius:8,border:"none",background:"#1d3557",color:"#fff",fontSize:14,fontWeight:600,fontFamily:"'DM Sans',sans-serif",cursor:"pointer"},
   inp:{flex:1,padding:"10px 14px",borderRadius:8,border:"1px solid #dee2e6",fontSize:14,fontFamily:"'DM Sans',sans-serif",outline:"none",color:"#264653",background:"#fff"},
   iBtn:{background:"none",border:"none",cursor:"pointer",color:"#adb5bd",padding:2,display:"flex",alignItems:"center"},
+  conjCard:{width:"100%",maxWidth:540,background:"#fff",borderRadius:16,padding:"40px 36px",display:"flex",flexDirection:"column",alignItems:"center",boxShadow:"0 8px 32px rgba(0,0,0,.08)"},
+  conjCardM:{width:"100%",background:"#fff",borderRadius:14,padding:"28px 20px",display:"flex",flexDirection:"column",alignItems:"center",boxShadow:"0 6px 24px rgba(0,0,0,.08)"},
+  conjInput:{display:"flex",gap:8,alignItems:"center",width:"100%",maxWidth:360},
+  conjInp:{flex:1,padding:"12px 16px",borderRadius:10,border:"2px solid #dee2e6",fontSize:18,fontFamily:"'DM Sans',sans-serif",textAlign:"center",outline:"none",color:"#264653",background:"#fff",transition:"border-color .2s, background .2s"},
+  micBtn:{width:44,height:44,borderRadius:"50%",border:"2px solid #dee2e6",background:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#868e96",transition:"all .2s",flexShrink:0},
+  micBtnActive:{borderColor:"#c1121f",background:"#fde8e8",color:"#c1121f"},
+  pronoun:{fontSize:28,fontWeight:700,fontFamily:"'DM Serif Display',serif",color:"#e76f51",marginBottom:16},
 };

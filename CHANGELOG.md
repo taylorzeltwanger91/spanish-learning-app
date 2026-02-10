@@ -2,6 +2,14 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [1.5.0] - 2026-02-09
+
+### Added
+- Conjugation Practice page — practice present-tense verb conjugations for 25 verbs (125 cards)
+- Speech recognition input — tap the mic button to speak your answer in Spanish (Chrome, Edge, Safari)
+- Filter by verb type (AR/ER/IR/Irregular) and pronoun (yo/tú/él-ella/nosotros/ellos-ellas)
+- Spaced repetition for conjugation progress with localStorage persistence
+
 ## [1.4.0] - 2026-02-09
 
 ### Added
