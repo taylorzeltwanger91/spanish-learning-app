@@ -237,6 +237,7 @@ function normConj(s,pronoun) {
 function useSpeech() {
   const [listening,setListening]=useState(false);
   const [text,setText]=useState("");
+  const [alts,setAlts]=useState([]);
   const recRef=useRef(null);
   const SR=typeof window!=="undefined"&&(window.SpeechRecognition||window.webkitSpeechRecognition);
   const supported=!!SR;
@@ -246,10 +247,14 @@ function useSpeech() {
     if(listening){try{recRef.current&&recRef.current.stop()}catch(e){}setListening(false);return}
     try{
       const r=new SR();
-      r.lang="es-ES";r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
+      r.lang="es-US";r.continuous=false;r.interimResults=true;r.maxAlternatives=5;
       r.onresult=ev=>{
-        let t="";for(let i=0;i<ev.results.length;i++)t+=ev.results[i][0].transcript;
-        setText(t);
+        let t="",finals=[];
+        for(let i=0;i<ev.results.length;i++){
+          t+=ev.results[i][0].transcript;
+          if(ev.results[i].isFinal)for(let j=0;j<ev.results[i].length;j++)finals.push(ev.results[i][j].transcript);
+        }
+        setText(t);if(finals.length)setAlts(finals);
       };
       r.onerror=()=>setListening(false);
       r.onend=()=>setListening(false);
@@ -257,7 +262,8 @@ function useSpeech() {
     }catch(e){setListening(false)}
   },[SR,listening]);
 
-  return {listening,text,supported,toggle,setText};
+  const reset=useCallback(()=>{setText("");setAlts([])},[]);
+  return {listening,text,alts,supported,toggle,setText,reset};
 }
 
 function shuffle(a) { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]} return b; }
@@ -553,7 +559,7 @@ function Sentences({fs,pf,sf,lessons,mob}) {
   const [mode,setMode]=useState("build");const [typed,setTyped]=useState("");
   const speech=useSpeech();const typedRef=useRef(null);
 
-  const setup=s=>{const w=s.es.match(/[¿¡]?[\wáéíóúñüÁÉÍÓÚÑÜ]+[.,?!]?/gi)||[];setPlaced([]);setAvail(shuffle(w.map((x,i)=>({id:i,word:x}))));setRes(null);setHint(false);setTyped("");speech.setText("")};
+  const setup=s=>{const w=s.es.match(/[¿¡]?[\wáéíóúñüÁÉÍÓÚÑÜ]+[.,?!]?/gi)||[];setPlaced([]);setAvail(shuffle(w.map((x,i)=>({id:i,word:x}))));setRes(null);setHint(false);setTyped("");speech.reset()};
   const go=useCallback(()=>{const qq=shuffle(fs).slice(0,10);setQ(qq);setCi(0);setSc({c:0,w:0,t:qq.length});setOn(true);setRes(null);if(qq.length)setup(qq[0]);if(mode==="type")setTimeout(()=>typedRef.current&&typedRef.current.focus(),100)},[fs,mode]);
   const cur=q[ci],done=ci>=q.length&&on;
   const add=w=>{setPlaced(p=>[...p,w]);setAvail(a=>a.filter(x=>x.id!==w.id))};
@@ -563,7 +569,10 @@ function Sentences({fs,pf,sf,lessons,mob}) {
     if(!cur)return;
     if(speech.listening)speech.toggle();
     const att=mode==="type"?typed:placed.map(w=>w.word).join(" ");
-    if(normS(att)===normS(cur.es)){setRes("y");setSc(s=>({...s,c:s.c+1}))}else{setRes("n");setSc(s=>({...s,w:s.w+1}))}
+    const expected=normS(cur.es);
+    let correct=normS(att)===expected;
+    if(!correct&&mode==="type"&&speech.alts.length)correct=speech.alts.some(a=>normS(a)===expected);
+    if(correct){setRes("y");setSc(s=>({...s,c:s.c+1}))}else{setRes("n");setSc(s=>({...s,w:s.w+1}))}
   };
   const next=()=>{const n=ci+1;setCi(n);if(n<q.length)setup(q[n]);if(mode==="type")setTimeout(()=>typedRef.current&&typedRef.current.focus(),50)};
   const hasInput=mode==="type"?typed.trim().length>0:placed.length>0;
@@ -602,7 +611,7 @@ function Sentences({fs,pf,sf,lessons,mob}) {
           <input ref={typedRef} style={{...Z.conjInp,fontSize:16,textAlign:"left",...(res==="y"?{borderColor:"#2d6a4f",background:"#f0faf0"}:{}),...(res==="n"?{borderColor:"#c1121f",background:"#fef5f5"}:{})}} value={typed} onChange={e=>!res&&setTyped(e.target.value)} placeholder="Type or speak the sentence..." disabled={!!res} autoComplete="off" autoCapitalize="off" spellCheck="false"/>
           {speech.supported&&<button onClick={speech.toggle} className={speech.listening?"mic-pulse":""} style={{...Z.micBtn,...(speech.listening?Z.micBtnActive:{})}}>{IC.mic}</button>}
         </div>
-        {speech.listening&&<div style={{fontSize:12,color:"#c1121f",marginTop:6,textAlign:"center"}}>Listening... tap mic to stop</div>}
+        {speech.listening&&<div style={{fontSize:12,color:"#c1121f",marginTop:6,textAlign:"center"}}>Listening... speak now</div>}
       </div>}
 
       {!res&&<div style={{display:"flex",gap:mob?6:10,marginTop:mob?12:20,justifyContent:"center",flexWrap:"wrap"}}>
@@ -807,12 +816,14 @@ function Conjugacion({conjProg,updConj,mob}) {
   const check=useCallback(()=>{
     if(!cd||res)return;
     if(speech.listening)speech.toggle();
-    const correct=normConj(inp,cd.pron)===normConj(cd.answer,null);
+    const expected=normConj(cd.answer,null);
+    let correct=normConj(inp,cd.pron)===expected;
+    if(!correct&&speech.alts.length)correct=speech.alts.some(a=>normConj(a,cd.pron)===expected);
     setRes(correct?"y":"n");updConj(cd.key,correct);setSs(s=>({...s,[correct?"c":"w"]:s[correct?"c":"w"]+1}));
   },[cd,inp,res,updConj,speech]);
 
   const next=useCallback(()=>{
-    setRes(null);setInp("");speech.setText("");setIdx(i=>i+1);
+    setRes(null);setInp("");speech.reset();setIdx(i=>i+1);
     setTimeout(()=>inpRef.current&&inpRef.current.focus(),50);
   },[speech]);
 
