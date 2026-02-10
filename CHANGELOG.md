@@ -2,6 +2,19 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [2.0.0] - 2026-02-10
+
+### Added
+- Firebase Authentication — sign in with email/password or Google account
+- Cloud sync via Firestore — all progress persists across devices and browsers
+- Auth screen with sign-in/sign-up tabs and Google sign-in button
+- User display name and sign-out button in sidebar
+- Automatic migration of existing localStorage data to cloud on first sign-in
+
+### Changed
+- All progress data now dual-persisted to both localStorage (offline cache) and Firestore (cloud source of truth)
+- GitHub Actions workflow now injects Firebase config from repository secrets
+
 ## [1.6.2] - 2026-02-09
 
 ### Fixed
