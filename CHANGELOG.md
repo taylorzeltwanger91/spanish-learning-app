@@ -2,6 +2,18 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [1.6.2] - 2026-02-09
+
+### Fixed
+- Vocabulary progress (confidence, mastered/learning status, spaced repetition scheduling) now persists across page reloads for all built-in lesson items
+- Mastered/Learning/New counters on home and progress pages now reflect actual practice history instead of resetting to zero
+
+## [1.6.1] - 2026-02-09
+
+### Fixed
+- Drive-imported lessons now persist to localStorage — word count stays consistent across page reloads instead of briefly flashing then dropping
+- Custom words now persist to localStorage — no longer lost on refresh
+
 ## [1.6.0] - 2026-02-09
 
 ### Added
