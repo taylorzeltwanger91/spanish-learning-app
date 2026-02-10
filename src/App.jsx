@@ -12,10 +12,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const firebaseApp = firebaseConfig.apiKey ? initializeApp(firebaseConfig) : null;
-const auth = firebaseApp ? getAuth(firebaseApp) : null;
-const db = firebaseApp ? getFirestore(firebaseApp) : null;
-const googleProvider = firebaseApp ? new GoogleAuthProvider() : null;
+let firebaseApp = null, auth = null, db = null, googleProvider = null;
+try {
+  if (firebaseConfig.apiKey) {
+    firebaseApp = initializeApp(firebaseConfig);
+    auth = getAuth(firebaseApp);
+    db = getFirestore(firebaseApp);
+    googleProvider = new GoogleAuthProvider();
+  }
+} catch(e) { console.warn("Firebase init failed:", e.message); }
 
 // Debounced Firestore save — waits 2s after last change before writing
 let _saveTimer = null;
