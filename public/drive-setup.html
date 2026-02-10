@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lengua - Google Drive Setup Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f8f7f4;color:#264653;line-height:1.6}
+a{color:#e76f51;text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:720px;margin:0 auto;padding:32px 24px 64px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:40px;flex-wrap:wrap;gap:12px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#e76f51,#f4a261);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;font-family:'DM Serif Display',serif;color:#fff}
+.brand-text h1{font-size:20px;font-weight:700;font-family:'DM Serif Display',serif;color:#1d3557}
+.brand-text span{font-size:12px;color:#868e96}
+.back{padding:8px 16px;border-radius:8px;border:1px solid #dee2e6;background:#fff;font-size:13px;font-weight:500;color:#495057;font-family:'DM Sans',sans-serif;cursor:pointer;text-decoration:none}
+.back:hover{background:#f0f0f0;text-decoration:none}
+.intro{background:#fff;border-radius:12px;padding:20px 24px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:24px}
+.intro h2{font-size:18px;font-weight:700;font-family:'DM Serif Display',serif;color:#1d3557;margin-bottom:8px}
+.intro p{font-size:14px;color:#495057}
+.step{background:#fff;border-radius:12px;padding:20px 24px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:12px;border-left:4px solid #e76f51;position:relative}
+.step-num{position:absolute;top:20px;left:-16px;width:28px;height:28px;border-radius:50%;background:#e76f51;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.step h3{font-size:15px;font-weight:700;color:#1d3557;margin-bottom:8px;padding-left:20px}
+.step p,.step li{font-size:14px;color:#495057;line-height:1.7}
+.step ol,.step ul{padding-left:36px;margin-top:4px}
+.step li{margin-bottom:4px}
+.step code{background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:13px;color:#264653}
+.step .highlight{background:#fef3cd;padding:2px 6px;border-radius:4px;font-weight:600;color:#856404}
+.step .example{background:#fafaf8;border-radius:8px;padding:12px 16px;font-family:monospace;font-size:13px;color:#264653;margin:8px 0;line-height:1.6;overflow-x:auto;word-break:break-all}
+.tip{background:#d8f3dc;border-radius:8px;padding:10px 14px;font-size:13px;color:#2d6a4f;margin-top:10px}
+.trouble{background:#fff;border-radius:12px;padding:20px 24px;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:12px;margin-top:32px}
+.trouble h2{font-size:18px;font-weight:700;font-family:'DM Serif Display',serif;color:#1d3557;margin-bottom:16px}
+.issue{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f0f0f0}
+.issue:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.issue h4{font-size:14px;font-weight:600;color:#c1121f;margin-bottom:4px}
+.issue p{font-size:13px;color:#495057}
+.footer{text-align:center;margin-top:40px;padding-top:24px;border-top:1px solid #e9ecef}
+.footer p{font-size:13px;color:#868e96}
+@media(max-width:600px){
+  .wrap{padding:16px 14px 40px}
+  .header{margin-bottom:24px}
+  .step-num{left:-14px;width:24px;height:24px;font-size:11px;top:22px}
+  .step{padding:16px 14px 16px 18px}
+  .step h3{padding-left:16px;font-size:14px}
+  .intro{padding:16px 14px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="brand">
+      <div class="logo">&#241;</div>
+      <div class="brand-text">
+        <h1>Lengua</h1>
+        <span>Google Drive Setup Guide</span>
+      </div>
+    </div>
+    <a href="./" class="back">&larr; Back to App</a>
+  </div>
+
+  <div class="intro">
+    <h2>Connect Your Homework Folder</h2>
+    <p>Lengua can automatically import vocabulary from Google Docs in your Drive folder. Follow these steps to set up the connection. The whole process takes about 5 minutes and uses Google's free tier.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <h3>Create a Google Cloud Project</h3>
+    <p>Go to the <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> and create a new project. Give it any name (e.g. "Lengua"). The free tier is all you need.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <h3>Enable the Google Drive API</h3>
+    <ol>
+      <li>In your project, go to <strong>APIs &amp; Services</strong> &rarr; <strong>Library</strong></li>
+      <li>Search for <strong>"Google Drive API"</strong></li>
+      <li>Click it, then click <strong>Enable</strong></li>
+    </ol>
+    <div class="tip">Make sure you're in the correct project when enabling the API.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <h3>Create an API Key</h3>
+    <ol>
+      <li>Go to <strong>APIs &amp; Services</strong> &rarr; <strong>Credentials</strong></li>
+      <li>Click <strong>+ Create Credentials</strong> &rarr; <strong>API Key</strong></li>
+      <li>Copy the key (starts with <code>AIza...</code>)</li>
+    </ol>
+    <div class="tip">Optional: Under "Restrict key", you can limit it to only the Google Drive API for extra security. If you restrict it, make sure Google Drive API is in the allowed list.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <h3>Create a Homework Folder in Google Drive</h3>
+    <p>In <a href="https://drive.google.com" target="_blank" rel="noopener">Google Drive</a>, create a new folder for your Spanish homework documents. Put your vocabulary docs inside this folder.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <h3>Share the Folder Publicly</h3>
+    <ol>
+      <li>Right-click the folder &rarr; <strong>Share</strong></li>
+      <li>Under "General access", change to <span class="highlight">Anyone with the link</span></li>
+      <li>Set the role to <strong>Viewer</strong></li>
+      <li>Click <strong>Done</strong></li>
+    </ol>
+    <div class="tip">This is required because Lengua uses an API key (not OAuth sign-in) to read your files. Only "Viewer" access is needed.</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">6</div>
+    <h3>Copy the Folder ID</h3>
+    <p>Open the folder in Drive. The URL will look like:</p>
+    <div class="example">https://drive.google.com/drive/folders/<span style="background:#fef3cd;padding:1px 4px;border-radius:3px;font-weight:700">1aBcDeFgHiJkLmNoPqRsTuVwXyZ</span></div>
+    <p>The <strong>Folder ID</strong> is the long string after <code>/folders/</code>. Copy it.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">7</div>
+    <h3>Connect in Lengua</h3>
+    <ol>
+      <li>Open Lengua and go to the <strong>Drive</strong> page</li>
+      <li>Paste your <strong>Folder ID</strong> and <strong>API Key</strong></li>
+      <li>Click <strong>Test Connection</strong> to verify everything works</li>
+      <li>Click <strong>Connect &amp; Sync</strong> to import your vocabulary</li>
+    </ol>
+  </div>
+
+  <div class="trouble">
+    <h2>Troubleshooting</h2>
+
+    <div class="issue">
+      <h4>"API key not valid" / 400 Error</h4>
+      <p>Double-check that you copied the full API key. It should start with <code>AIza</code> and be about 39 characters long. Make sure there are no extra spaces.</p>
+    </div>
+
+    <div class="issue">
+      <h4>"Folder not found" / 404 Error</h4>
+      <p>Verify the Folder ID is correct (the string after <code>/folders/</code> in the Drive URL). Also make sure the folder sharing is set to "Anyone with the link".</p>
+    </div>
+
+    <div class="issue">
+      <h4>"Forbidden" / 403 Error</h4>
+      <p>This usually means one of:</p>
+      <ul>
+        <li>The <strong>Google Drive API</strong> is not enabled in your Cloud project</li>
+        <li>Your API key is <strong>restricted</strong> and doesn't include the Drive API</li>
+        <li>The folder is <strong>not shared</strong> publicly (needs "Anyone with the link")</li>
+      </ul>
+    </div>
+
+    <div class="issue">
+      <h4>"Rate limit exceeded" / 429 Error</h4>
+      <p>You've hit Google's API rate limit. Wait a minute or two, then try again. This is uncommon with normal usage.</p>
+    </div>
+
+    <div class="issue">
+      <h4>Files aren't being imported</h4>
+      <p>Make sure your documents use a supported format:</p>
+      <div class="example">hola - hello<br>buenos d&iacute;as - good morning<br>hablar - to speak</div>
+      <p style="margin-top:6px">Supported separators: <code>-</code>, <code>=</code>, <code>:</code> between Spanish and English words.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><a href="./">&larr; Back to Lengua</a></p>
+  </div>
+</div>
+</body>
+</html>

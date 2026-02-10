@@ -2,6 +2,16 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [1.6.0] - 2026-02-09
+
+### Added
+- Google Drive setup guide page (`/drive-setup.html`) with step-by-step instructions and troubleshooting
+- "Test Connection" button on Drive page to validate API key and folder before syncing
+- Actionable error messages for Drive sync failures (invalid API key, folder not found, forbidden, rate limits)
+- Automatic retry on server errors (5xx) during Drive sync
+- Failed file count shown after sync when some files couldn't be imported
+- Setup guide links in error cards and Drive action buttons
+
 ## [1.5.1] - 2026-02-09
 
 ### Added

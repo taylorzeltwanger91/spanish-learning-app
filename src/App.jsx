@@ -377,29 +377,47 @@ function parseLesson(text, fileId, fileName) {
 function getImported() { try{return JSON.parse(localStorage.getItem("lengua-imported")||"[]")}catch(e){return[]} }
 function markImported(ids) { const prev=getImported(); localStorage.setItem("lengua-imported",JSON.stringify([...new Set([...prev,...ids])])) }
 
+// Parse Google API error response into actionable message
+function parseDriveError(status, body) {
+  let detail = "";
+  try { const j = JSON.parse(body); detail = (j.error && j.error.message) || ""; } catch(e) { detail = body || ""; }
+  const low = (detail + " " + status).toLowerCase();
+  if(status === 400 || low.includes("api key not valid") || low.includes("invalid")) return "Invalid API key \u2014 check that you copied the full key (starts with AIza...). See the setup guide for help.";
+  if(status === 404) return "Folder not found \u2014 verify the folder ID from your Drive URL and make sure the folder is shared as \u201cAnyone with the link\u201d.";
+  if(status === 429 || low.includes("rate") || low.includes("quota")) return "Rate limit exceeded \u2014 wait a minute and try again.";
+  if(status === 403) {
+    if(low.includes("disabled") || low.includes("not been used") || low.includes("enable")) return "Google Drive API is not enabled \u2014 enable it in your Google Cloud project, then try again.";
+    return "Access forbidden \u2014 the Drive API may not be enabled, your API key may be restricted, or the folder isn\u2019t shared publicly. See the setup guide for details.";
+  }
+  return `Drive error (${status}): ${detail || "unknown error"}. See the setup guide for troubleshooting.`;
+}
+
 // Sync with Google Drive: scan folder, download & parse new files, update lessons
 async function syncDrive(ds, lessons, setLessons, setSync) {
   if(!ds.folderId||!ds.apiKey) return;
-  setSync(s=>({...s, syncing:true}));
+  setSync(s=>({...s, syncing:true, error:null}));
   try {
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents+and+trashed=false&key=${ds.apiKey}&fields=files(id,name,mimeType,modifiedTime)`);
-    if(!r.ok) throw new Error(`Drive API ${r.status}`);
+    const url = `https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents+and+trashed=false&key=${ds.apiKey}&fields=files(id,name,mimeType,modifiedTime)`;
+    let r = await fetch(url);
+    // Retry once on server errors (5xx)
+    if(r.status >= 500) { await new Promise(ok=>setTimeout(ok,1500)); r = await fetch(url); }
+    if(!r.ok) { const t = await r.text(); throw new Error(parseDriveError(r.status, t)); }
     const data = await r.json();
     const files = data.files||[];
     const imported = getImported();
     const newFiles = files.filter(f=>!imported.includes(f.id));
 
-    let added = 0;
+    let added = 0, failed = 0;
     for(const f of newFiles) {
       try {
         let txt = "";
         if(f.mimeType==="application/vnd.google-apps.document") {
           const er = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain&key=${ds.apiKey}`);
-          if(!er.ok) continue;
+          if(!er.ok) { failed++; continue; }
           txt = await er.text();
         } else {
           const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&key=${ds.apiKey}`);
-          if(!dr.ok) continue;
+          if(!dr.ok) { failed++; continue; }
           txt = await dr.text();
         }
         const lesson = parseLesson(txt, f.id, f.name);
@@ -408,9 +426,9 @@ async function syncDrive(ds, lessons, setLessons, setSync) {
           added += lesson.items.length;
         }
         markImported([f.id]);
-      } catch(e) { /* skip file on error */ }
+      } catch(e) { failed++; }
     }
-    setSync({syncing:false, lastSync:Date.now(), newFiles:newFiles.length, newWords:added, totalFiles:files.length});
+    setSync({syncing:false, lastSync:Date.now(), newFiles:newFiles.length, newWords:added, totalFiles:files.length, failedFiles:failed});
   } catch(e) {
     setSync(s=>({...s, syncing:false, error:e.message}));
   }
@@ -723,11 +741,28 @@ function Prog({st,all,lessons,hist,mob}) {
 
 function Drive({ds,sds,mob,sync,onSync}) {
   const [showSetup,setShowSetup]=useState(!ds.folderId||!ds.apiKey);
+  const [testResult,setTestResult]=useState(null);
+  const [testing,setTesting]=useState(false);
   const connected=!!(ds.folderId&&ds.apiKey);
   const imported=getImported();
+  const guideBase = import.meta.env.BASE_URL || "/";
+  const guideUrl = guideBase + "drive-setup.html";
 
-  const disconnect=()=>{sds({folderId:"",apiKey:""});localStorage.removeItem("lengua-drive");localStorage.removeItem("lengua-imported");setShowSetup(true)};
+  const disconnect=()=>{sds({folderId:"",apiKey:""});localStorage.removeItem("lengua-drive");localStorage.removeItem("lengua-imported");setShowSetup(true);setTestResult(null)};
   const resync=()=>{localStorage.removeItem("lengua-imported");onSync()};
+
+  const testConnection=async()=>{
+    if(!ds.folderId||!ds.apiKey)return;
+    setTesting(true);setTestResult(null);
+    try {
+      const r=await fetch(`https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents+and+trashed=false&key=${ds.apiKey}&pageSize=1&fields=files(id)`);
+      if(!r.ok){const t=await r.text();setTestResult({ok:false,msg:parseDriveError(r.status,t)});}
+      else{const d=await r.json();setTestResult({ok:true,msg:`Connection successful! Found ${d.files?d.files.length>0?"files":"no files yet":"folder"} in your Drive folder.`});}
+    }catch(e){setTestResult({ok:false,msg:"Network error \u2014 check your internet connection and try again."});}
+    setTesting(false);
+  };
+
+  const actionBtn={padding:"8px 16px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"};
 
   return <div style={mob?Z.pgM:Z.pg}>
     <h1 style={mob?Z.h1M:Z.h1}>Google Drive Sync</h1><p style={Z.sub}>Automatically import vocabulary from your homework folder</p>
@@ -744,8 +779,12 @@ function Drive({ds,sds,mob,sync,onSync}) {
         Last sync: {new Date(sync.lastSync).toLocaleString()} · {sync.totalFiles||0} files in folder · {imported.length} imported
       </div>}
       {sync.newWords>0&&<div style={{marginTop:6,fontSize:13,color:"#2d6a4f",fontWeight:600}}>+{sync.newWords} new words added from {sync.newFiles} new file{sync.newFiles!==1?"s":""}</div>}
-      {sync.newFiles===0&&sync.lastSync&&!sync.syncing&&<div style={{marginTop:6,fontSize:13,color:"#868e96"}}>Everything up to date</div>}
-      {sync.error&&<div style={{marginTop:6,fontSize:13,color:"#c1121f"}}>{sync.error}</div>}
+      {sync.failedFiles>0&&<div style={{marginTop:6,fontSize:13,color:"#e09f3e",fontWeight:600}}>{sync.failedFiles} file{sync.failedFiles!==1?"s":""} could not be imported</div>}
+      {sync.newFiles===0&&sync.lastSync&&!sync.syncing&&!sync.error&&<div style={{marginTop:6,fontSize:13,color:"#868e96"}}>Everything up to date</div>}
+      {sync.error&&<div style={{marginTop:10,padding:"12px 16px",borderRadius:8,background:"#fde8e8",border:"1px solid #f5c6cb"}}>
+        <div style={{fontSize:13,color:"#c1121f",lineHeight:1.6}}>{sync.error}</div>
+        <a href={guideUrl} target="_blank" rel="noopener" style={{fontSize:12,color:"#e76f51",fontWeight:600,marginTop:6,display:"inline-block"}}>View setup &amp; troubleshooting guide &rarr;</a>
+      </div>}
     </div>}
 
     {connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
@@ -761,9 +800,10 @@ function Drive({ds,sds,mob,sync,onSync}) {
     </div>}
 
     {connected&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-      <button style={{padding:"8px 16px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"}} onClick={()=>setShowSetup(x=>!x)}>{showSetup?"Hide":"Edit"} Settings</button>
-      <button style={{padding:"8px 16px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"}} onClick={resync}>Re-import All Files</button>
-      <button style={{padding:"8px 16px",borderRadius:6,border:"1px solid #fde8e8",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#c1121f"}} onClick={disconnect}>Disconnect</button>
+      <button style={actionBtn} onClick={()=>setShowSetup(x=>!x)}>{showSetup?"Hide":"Edit"} Settings</button>
+      <button style={actionBtn} onClick={resync}>Re-import All Files</button>
+      <a href={guideUrl} target="_blank" rel="noopener" style={{...actionBtn,textDecoration:"none",display:"inline-flex",alignItems:"center"}}>Setup Guide</a>
+      <button style={{...actionBtn,borderColor:"#fde8e8",color:"#c1121f"}} onClick={disconnect}>Disconnect</button>
     </div>}
 
     {showSetup&&<>
@@ -771,13 +811,22 @@ function Drive({ds,sds,mob,sync,onSync}) {
         <li>Create a folder in Google Drive for your homework docs</li>
         <li>Share it as <strong>"Anyone with the link"</strong> (Viewer)</li>
         <li>Copy the folder ID from the URL (the part after <code>/folders/</code>)</li>
-        <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style={{color:"#e76f51"}}>Google Cloud Console</a> → New Project → Enable <strong>Google Drive API</strong> → Create <strong>API Key</strong></li>
+        <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style={{color:"#e76f51"}}>Google Cloud Console</a> &rarr; New Project &rarr; Enable <strong>Google Drive API</strong> &rarr; Create <strong>API Key</strong></li>
         <li>Paste both below and hit Connect</li>
-      </ol></div>}
+      </ol>
+      <div style={{marginTop:12}}><a href={guideUrl} target="_blank" rel="noopener" style={{fontSize:13,color:"#e76f51",fontWeight:600}}>Need detailed instructions? View the full setup guide &rarr;</a></div>
+      </div>}
       <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}><h3 style={Z.ch}>{connected?"Settings":"Connection"}</h3>
         <div style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>Folder ID</label><input style={{...Z.inp,width:"100%"}} placeholder="1aBcDeFgHiJk..." value={ds.folderId} onChange={e=>sds(s=>({...s,folderId:e.target.value}))}/></div>
         <div style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>API Key</label><input style={{...Z.inp,width:"100%"}} type="password" placeholder="AIza..." value={ds.apiKey} onChange={e=>sds(s=>({...s,apiKey:e.target.value}))}/></div>
-        <button style={mob?Z.startBtnM:Z.startBtn} onClick={()=>{setShowSetup(false);onSync()}} disabled={!ds.folderId||!ds.apiKey||sync.syncing}>{sync.syncing?"Connecting...":"Connect & Sync"}</button>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <button style={mob?Z.startBtnM:Z.startBtn} onClick={()=>{setShowSetup(false);setTestResult(null);onSync()}} disabled={!ds.folderId||!ds.apiKey||sync.syncing}>{sync.syncing?"Connecting...":"Connect & Sync"}</button>
+          <button style={{padding:"14px 24px",borderRadius:10,border:"1px solid #dee2e6",background:"#fff",fontSize:mob?15:16,fontWeight:600,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",color:"#495057"}} onClick={testConnection} disabled={!ds.folderId||!ds.apiKey||testing}>{testing?"Testing...":"Test Connection"}</button>
+        </div>
+        {testResult&&<div style={{marginTop:12,padding:"12px 16px",borderRadius:8,background:testResult.ok?"#d8f3dc":"#fde8e8",border:`1px solid ${testResult.ok?"#b7e4c7":"#f5c6cb"}`}}>
+          <div style={{fontSize:13,color:testResult.ok?"#2d6a4f":"#c1121f",lineHeight:1.6}}>{testResult.msg}</div>
+          {!testResult.ok&&<a href={guideUrl} target="_blank" rel="noopener" style={{fontSize:12,color:"#e76f51",fontWeight:600,marginTop:6,display:"inline-block"}}>View setup guide &rarr;</a>}
+        </div>}
       </div>
     </>}
   </div>;
@@ -902,6 +951,16 @@ function ResultCard({c,w,s,again,finish,title,labels,mob}) {
 }
 
 const CHANGELOG = [
+  {
+    version: "1.6.0", date: "2026-02-09",
+    added: [
+      "Google Drive setup guide page with step-by-step instructions and troubleshooting",
+      "Test Connection button to validate API key and folder before syncing",
+      "Actionable error messages for Drive sync failures (API key, folder, permissions, rate limits)",
+      "Automatic retry on server errors during Drive sync",
+      "Failed file count shown after sync when some files couldn\u2019t be imported",
+    ],
+  },
   {
     version: "1.5.1", date: "2026-02-09",
     added: [
