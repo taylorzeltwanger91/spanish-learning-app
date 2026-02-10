@@ -445,8 +445,21 @@ const IC_close=<svg width="24" height="24" viewBox="0 0 24 24" fill="none" strok
 
 export default function App() {
   const [view, setView] = useState("home");
-  const [lessons, setLessons] = useState(LESSONS);
-  const [custom, setCustom] = useState([]);
+  const [lessons, setLessons] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]");
+      const progress = JSON.parse(localStorage.getItem("lengua-progress") || "{}");
+      const base = saved.length ? [...LESSONS, ...saved] : LESSONS;
+      return base.map(l => ({
+        ...l,
+        items: l.items.map(i => progress[i.id] ? { ...i, ...progress[i.id] } : i)
+      }));
+    } catch(e) { return LESSONS; }
+  });
+  const [custom, setCustom] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("lengua-custom") || "[]"); }
+    catch(e) { return []; }
+  });
   const [pf, setPf] = useState({ lesson:"all", verbType:"all" });
   const [pm, setPm] = useState("es-en");
   const [hist, setHist] = useState([]);
@@ -459,14 +472,36 @@ export default function App() {
   useEffect(()=>{localStorage.setItem("lengua-conj-progress",JSON.stringify(conjProg))},[conjProg]);
   const updConj = useCallback((key,correct)=>{setConjProg(p=>{const prev=p[key]||{confidence:0,lastSeen:null,nextReview:null};const nc=correct?Math.min(prev.confidence+1,5):Math.max(prev.confidence-1,0);return{...p,[key]:{confidence:nc,lastSeen:Date.now(),nextReview:getNextReview(nc)}}})},[]);
 
+  // Persist Drive-imported lessons (exclude built-in LESSONS so code updates still apply)
+  const builtInIds = useMemo(() => new Set(LESSONS.map(l => l.id)), []);
+  useEffect(() => {
+    const drive = lessons.filter(l => !builtInIds.has(l.id));
+    localStorage.setItem("lengua-drive-lessons", JSON.stringify(drive));
+  }, [lessons, builtInIds]);
+
+  // Persist custom words
+  useEffect(() => { localStorage.setItem("lengua-custom", JSON.stringify(custom)); }, [custom]);
+
   // Persist drive settings
   useEffect(()=>{if(ds.folderId||ds.apiKey)localStorage.setItem("lengua-drive",JSON.stringify(ds))},[ds]);
+
+  // Persist vocab progress (confidence, lastSeen, nextReview, favorite) for all items
+  const allItems = useMemo(()=>[...lessons.flatMap(l=>l.items),...custom],[lessons,custom]);
+  useEffect(()=>{
+    const progress = {};
+    allItems.forEach(i => {
+      if(i.confidence > 0 || i.lastSeen || i.nextReview || i.favorite) {
+        progress[i.id] = { confidence: i.confidence, lastSeen: i.lastSeen, nextReview: i.nextReview, favorite: i.favorite };
+      }
+    });
+    localStorage.setItem("lengua-progress", JSON.stringify(progress));
+  },[allItems]);
 
   // Auto-sync on mount when credentials exist
   useEffect(()=>{if(ds.folderId&&ds.apiKey){syncDrive(ds,lessons,setLessons,setDriveSync)}},[]);// eslint-disable-line react-hooks/exhaustive-deps
   const mob = useIsMobile();
 
-  const all = useMemo(()=>[...lessons.flatMap(l=>l.items),...custom],[lessons,custom]);
+  const all = allItems;
   const sents = useMemo(()=>lessons.flatMap(l=>(l.sentences||[]).map(s=>({...s,lesson:l.id}))),[lessons]);
   const fi = useMemo(()=>{let r=all;if(pf.lesson!=="all")r=r.filter(i=>i.lesson===pf.lesson);if(pf.verbType!=="all")r=r.filter(i=>i.tags.includes(pf.verbType));return r},[all,pf]);
   const fs = useMemo(()=>pf.lesson!=="all"&&pf.lesson!=="custom"?sents.filter(s=>s.lesson===pf.lesson):sents,[sents,pf]);
