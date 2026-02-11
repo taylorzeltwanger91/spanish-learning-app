@@ -528,7 +528,7 @@ export default function App() {
   const [view, setView] = useState("home");
   const [lessons, setLessons] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]");
+      const saved = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]").filter(l => l.id && l.id.startsWith("u-"));
       const progress = JSON.parse(localStorage.getItem("lengua-progress") || "{}");
       const base = saved.length ? [...LESSONS, ...saved] : LESSONS;
       return base.map(l => ({
@@ -559,14 +559,19 @@ export default function App() {
           if (cloud.progress) {
             localStorage.setItem("lengua-progress", JSON.stringify(cloud.progress));
             setLessons(prev => {
-              const saved = cloud.driveLessons || [];
+              // Merge uploaded lessons from Firestore + localStorage, localStorage wins (written sync)
+              const cloudUploaded = (cloud.driveLessons || []).filter(l => l.id && l.id.startsWith("u-"));
+              const localUploaded = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]").filter(l => l.id && l.id.startsWith("u-"));
+              const merged = new Map();
+              for (const l of cloudUploaded) merged.set(l.id, l);
+              for (const l of localUploaded) merged.set(l.id, l);
+              const saved = [...merged.values()];
               const base = saved.length ? [...LESSONS, ...saved] : LESSONS;
               return base.map(l => ({ ...l, items: l.items.map(i => cloud.progress[i.id] ? { ...i, ...cloud.progress[i.id] } : i) }));
             });
           }
           if (cloud.custom) { localStorage.setItem("lengua-custom", JSON.stringify(cloud.custom)); setCustom(cloud.custom); }
           if (cloud.conjProgress) { localStorage.setItem("lengua-conj-progress", JSON.stringify(cloud.conjProgress)); setConjProg(cloud.conjProgress); }
-          if (cloud.driveLessons) { localStorage.setItem("lengua-drive-lessons", JSON.stringify(cloud.driveLessons)); }
         } else {
           // No cloud doc — migrate existing localStorage data to Firestore (first sign-in)
           const progress = {};
