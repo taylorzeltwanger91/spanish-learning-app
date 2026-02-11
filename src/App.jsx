@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, updateProfile } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import mammoth from "mammoth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCxNGERDdj5wnROjOKa2qis6IEfWkjjz-Q",
@@ -316,7 +317,7 @@ const IC = {
   build:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>,
   book:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
   chart:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
-  drive:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 2 6.172 10H22l-6.172 10H2l6.172-10H2Z"/></svg>,
+  upload:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
   plus:<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   chk:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
   xx:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
@@ -410,66 +411,6 @@ function parseLesson(text, fileId, fileName) {
   };
 }
 
-// Get set of already-imported file IDs from localStorage
-function getImported() { try{return JSON.parse(localStorage.getItem("lengua-imported")||"[]")}catch(e){return[]} }
-function markImported(ids) { const prev=getImported(); localStorage.setItem("lengua-imported",JSON.stringify([...new Set([...prev,...ids])])) }
-
-// Parse Google API error response into actionable message
-function parseDriveError(status, body) {
-  let detail = "";
-  try { const j = JSON.parse(body); detail = (j.error && j.error.message) || ""; } catch(e) { detail = body || ""; }
-  const low = (detail + " " + status).toLowerCase();
-  if(status === 400 || low.includes("api key not valid") || low.includes("invalid")) return "Invalid API key \u2014 check that you copied the full key (starts with AIza...). See the setup guide for help.";
-  if(status === 404) return "Folder not found \u2014 verify the folder ID from your Drive URL and make sure the folder is shared as \u201cAnyone with the link\u201d.";
-  if(status === 429 || low.includes("rate") || low.includes("quota")) return "Rate limit exceeded \u2014 wait a minute and try again.";
-  if(status === 403) {
-    if(low.includes("disabled") || low.includes("not been used") || low.includes("enable")) return "Google Drive API is not enabled \u2014 enable it in your Google Cloud project, then try again.";
-    return "Access forbidden \u2014 the Drive API may not be enabled, your API key may be restricted, or the folder isn\u2019t shared publicly. See the setup guide for details.";
-  }
-  return `Drive error (${status}): ${detail || "unknown error"}. See the setup guide for troubleshooting.`;
-}
-
-// Sync with Google Drive: scan folder, download & parse new files, update lessons
-async function syncDrive(ds, lessons, setLessons, setSync) {
-  if(!ds.folderId||!ds.apiKey) return;
-  setSync(s=>({...s, syncing:true, error:null}));
-  try {
-    const url = `https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents+and+trashed=false&key=${ds.apiKey}&fields=files(id,name,mimeType,modifiedTime)`;
-    let r = await fetch(url);
-    // Retry once on server errors (5xx)
-    if(r.status >= 500) { await new Promise(ok=>setTimeout(ok,1500)); r = await fetch(url); }
-    if(!r.ok) { const t = await r.text(); throw new Error(parseDriveError(r.status, t)); }
-    const data = await r.json();
-    const files = data.files||[];
-    const imported = getImported();
-    const newFiles = files.filter(f=>!imported.includes(f.id));
-
-    let added = 0, failed = 0;
-    for(const f of newFiles) {
-      try {
-        let txt = "";
-        if(f.mimeType==="application/vnd.google-apps.document") {
-          const er = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain&key=${ds.apiKey}`);
-          if(!er.ok) { failed++; continue; }
-          txt = await er.text();
-        } else {
-          const dr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media&key=${ds.apiKey}`);
-          if(!dr.ok) { failed++; continue; }
-          txt = await dr.text();
-        }
-        const lesson = parseLesson(txt, f.id, f.name);
-        if(lesson.items.length) {
-          setLessons(p=>{const x=p.findIndex(l=>l.id===lesson.id);if(x>=0){const n=[...p];n[x]=lesson;return n}return[...p,lesson]});
-          added += lesson.items.length;
-        }
-        markImported([f.id]);
-      } catch(e) { failed++; }
-    }
-    setSync({syncing:false, lastSync:Date.now(), newFiles:newFiles.length, newWords:added, totalFiles:files.length, failedFiles:failed});
-  } catch(e) {
-    setSync(s=>({...s, syncing:false, error:e.message}));
-  }
-}
 
 function useIsMobile(bp=768) {
   const [mob, setMob] = useState(()=>typeof window!=="undefined"&&window.innerWidth<bp);
@@ -602,9 +543,7 @@ export default function App() {
   const [pf, setPf] = useState({ lesson:"all", verbType:"all" });
   const [pm, setPm] = useState("es-en");
   const [hist, setHist] = useState([]);
-  const [ds, setDs] = useState(()=>{try{const v=JSON.parse(localStorage.getItem("lengua-drive")||"null");return v&&v.folderId?v:{folderId:"",apiKey:""}}catch(e){return{folderId:"",apiKey:""}}});
   const [sideOpen, setSideOpen] = useState(false);
-  const [driveSync, setDriveSync] = useState({syncing:false,lastSync:null,newFiles:0});
   const [conjProg, setConjProg] = useState(()=>{try{return JSON.parse(localStorage.getItem("lengua-conj-progress")||"{}")}catch(e){return{}}});
 
   // Auth state listener
@@ -626,8 +565,6 @@ export default function App() {
           }
           if (cloud.custom) { localStorage.setItem("lengua-custom", JSON.stringify(cloud.custom)); setCustom(cloud.custom); }
           if (cloud.conjProgress) { localStorage.setItem("lengua-conj-progress", JSON.stringify(cloud.conjProgress)); setConjProg(cloud.conjProgress); }
-          if (cloud.driveSettings) { localStorage.setItem("lengua-drive", JSON.stringify(cloud.driveSettings)); setDs(cloud.driveSettings); }
-          if (cloud.imported) { localStorage.setItem("lengua-imported", JSON.stringify(cloud.imported)); }
           if (cloud.driveLessons) { localStorage.setItem("lengua-drive-lessons", JSON.stringify(cloud.driveLessons)); }
         } else {
           // No cloud doc — migrate existing localStorage data to Firestore (first sign-in)
@@ -640,8 +577,6 @@ export default function App() {
             progress: merged,
             custom: JSON.parse(localStorage.getItem("lengua-custom")||"[]"),
             conjProgress: JSON.parse(localStorage.getItem("lengua-conj-progress")||"{}"),
-            driveSettings: JSON.parse(localStorage.getItem("lengua-drive")||"{}"),
-            imported: JSON.parse(localStorage.getItem("lengua-imported")||"[]"),
             driveLessons: JSON.parse(localStorage.getItem("lengua-drive-lessons")||"[]"),
             createdAt: Date.now(),
           });
@@ -674,12 +609,6 @@ export default function App() {
     if(user) saveToFirestore(user.uid, { custom });
   }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist drive settings
-  useEffect(()=>{
-    if(ds.folderId||ds.apiKey) localStorage.setItem("lengua-drive",JSON.stringify(ds));
-    if(user) saveToFirestore(user.uid, { driveSettings: ds, imported: getImported() });
-  },[ds]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Persist vocab progress (confidence, lastSeen, nextReview, favorite) for all items
   const allItems = useMemo(()=>[...lessons.flatMap(l=>l.items),...custom],[lessons,custom]);
   useEffect(()=>{
@@ -693,8 +622,6 @@ export default function App() {
     if(user) saveToFirestore(user.uid, { progress });
   },[allItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-sync on mount when credentials exist
-  useEffect(()=>{if(ds.folderId&&ds.apiKey){syncDrive(ds,lessons,setLessons,setDriveSync)}},[]);// eslint-disable-line react-hooks/exhaustive-deps
   const mob = useIsMobile();
 
   const all = allItems;
@@ -734,7 +661,7 @@ export default function App() {
           {mob&&<button style={{...Z.hamBtn,marginLeft:"auto",color:"#fff"}} onClick={()=>setSideOpen(false)}>{IC_close}</button>}
         </div>
         <div style={Z.sNav}>
-          {[["home","Inicio",IC.home],["practice","Tarjetas",IC.cards],["sentences","Oraciones",IC.build],["conjugation","Conjugación",IC.conj],["dictionary","Diccionario",IC.book],["progress","Progreso",IC.chart],["drive","Drive",IC.drive],["settings","Settings",IC.gear]].map(([id,lb,ic])=>(
+          {[["home","Inicio",IC.home],["practice","Tarjetas",IC.cards],["sentences","Oraciones",IC.build],["conjugation","Conjugación",IC.conj],["dictionary","Diccionario",IC.book],["progress","Progreso",IC.chart],["import","Import",IC.upload],["settings","Settings",IC.gear]].map(([id,lb,ic])=>(
             <button key={id} onClick={()=>nav(id)} style={{...Z.nBtn,...(view===id?Z.nAct:{})}}><span style={{opacity:view===id?1:.6}}>{ic}</span><span>{lb}</span></button>
           ))}
         </div>
@@ -753,7 +680,7 @@ export default function App() {
         {view==="conjugation"&&<Conjugacion conjProg={conjProg} updConj={updConj} mob={mob}/>}
         {view==="dictionary"&&<Dict all={all} custom={custom} addC={addC} delC={delC} upd={upd} lessons={lessons} mob={mob}/>}
         {view==="progress"&&<Prog st={st} all={all} lessons={lessons} hist={hist} mob={mob}/>}
-        {view==="drive"&&<Drive ds={ds} sds={setDs} lessons={lessons} sl={setLessons} mob={mob} sync={driveSync} onSync={()=>syncDrive(ds,lessons,setLessons,setDriveSync)}/>}
+        {view==="import"&&<Import lessons={lessons} setLessons={setLessons} mob={mob}/>}
         {view==="settings"&&<Settings mob={mob}/>}
       </main>
     </div>
@@ -988,96 +915,100 @@ function Prog({st,all,lessons,hist,mob}) {
   </div>;
 }
 
-function Drive({ds,sds,mob,sync,onSync}) {
-  const [showSetup,setShowSetup]=useState(!ds.folderId||!ds.apiKey);
-  const [testResult,setTestResult]=useState(null);
-  const [testing,setTesting]=useState(false);
-  const connected=!!(ds.folderId&&ds.apiKey);
-  const imported=getImported();
-  const guideBase = import.meta.env.BASE_URL || "/";
-  const guideUrl = guideBase + "drive-setup.html";
+function Import({lessons,setLessons,mob}) {
+  const [dragging,setDragging]=useState(false);
+  const [processing,setProcessing]=useState(false);
+  const [result,setResult]=useState(null);
+  const fileRef=useRef(null);
+  const builtInIds=useMemo(()=>new Set(LESSONS.map(l=>l.id)),[]);
+  const uploaded=useMemo(()=>lessons.filter(l=>!builtInIds.has(l.id)),[lessons,builtInIds]);
 
-  const disconnect=()=>{sds({folderId:"",apiKey:""});localStorage.removeItem("lengua-drive");localStorage.removeItem("lengua-imported");setShowSetup(true);setTestResult(null)};
-  const resync=()=>{localStorage.removeItem("lengua-imported");onSync()};
-
-  const testConnection=async()=>{
-    if(!ds.folderId||!ds.apiKey)return;
-    setTesting(true);setTestResult(null);
-    try {
-      const r=await fetch(`https://www.googleapis.com/drive/v3/files?q='${ds.folderId}'+in+parents+and+trashed=false&key=${ds.apiKey}&pageSize=1&fields=files(id)`);
-      if(!r.ok){const t=await r.text();setTestResult({ok:false,msg:parseDriveError(r.status,t)});}
-      else{const d=await r.json();setTestResult({ok:true,msg:`Connection successful! Found ${d.files?d.files.length>0?"files":"no files yet":"folder"} in your Drive folder.`});}
-    }catch(e){setTestResult({ok:false,msg:"Network error \u2014 check your internet connection and try again."});}
-    setTesting(false);
+  const processFiles=async(files)=>{
+    setProcessing(true);setResult(null);
+    let added=0,skipped=0,failed=0;
+    for(const file of files) {
+      try {
+        const ext=file.name.split(".").pop().toLowerCase();
+        // Duplicate detection: name+size hash
+        const fileKey=file.name+":"+file.size;
+        const isDup=uploaded.some(l=>(l._fileKey||"")=== fileKey);
+        if(isDup){skipped++;continue}
+        let txt="";
+        if(ext==="docx"||ext==="doc") {
+          const buf=await file.arrayBuffer();
+          const r=await mammoth.extractRawText({arrayBuffer:buf});
+          txt=r.value;
+        } else if(ext==="txt") {
+          txt=await file.text();
+        } else { failed++;continue }
+        if(!txt.trim()){failed++;continue}
+        const fileId=btoa(fileKey).replace(/[^a-zA-Z0-9]/g,"").slice(0,12);
+        const lesson=parseLesson(txt,fileId,file.name);
+        if(lesson.items.length) {
+          lesson._fileKey=fileKey;
+          setLessons(p=>{const x=p.findIndex(l=>l.id===lesson.id);if(x>=0){const n=[...p];n[x]=lesson;return n}return[...p,lesson]});
+          added++;
+        } else { failed++ }
+      } catch(e) { failed++ }
+    }
+    setProcessing(false);
+    setResult({added,skipped,failed,total:files.length});
   };
 
-  const actionBtn={padding:"8px 16px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"};
+  const onDrop=useCallback((e)=>{e.preventDefault();setDragging(false);const files=[...e.dataTransfer.files];if(files.length)processFiles(files)},[uploaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onDragOver=useCallback((e)=>{e.preventDefault();setDragging(true)},[]);
+  const onDragLeave=useCallback(()=>setDragging(false),[]);
+  const onFileChange=useCallback((e)=>{const files=[...e.target.files];if(files.length)processFiles(files);e.target.value=""},[uploaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const deleteLesson=useCallback((id)=>{setLessons(p=>p.filter(l=>l.id!==id))},[setLessons]);
+
+  const dropStyle={border:`2px dashed ${dragging?"#e76f51":"#dee2e6"}`,borderRadius:12,padding:mob?24:40,textAlign:"center",background:dragging?"#fff5f2":"#fafaf8",cursor:"pointer",transition:"all .2s"};
 
   return <div style={mob?Z.pgM:Z.pg}>
-    <h1 style={mob?Z.h1M:Z.h1}>Google Drive Sync</h1><p style={Z.sub}>Automatically import vocabulary from your homework folder</p>
+    <h1 style={mob?Z.h1M:Z.h1}>Import Lessons</h1><p style={Z.sub}>Upload vocabulary files from your computer</p>
 
-    {connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16,borderLeft:"4px solid #2d6a4f"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{width:10,height:10,borderRadius:"50%",background:sync.syncing?"#e09f3e":"#2d6a4f",display:"inline-block"}}/>
-          <span style={{fontSize:14,fontWeight:600,color:"#1d3557"}}>{sync.syncing?"Syncing...":"Connected"}</span>
-        </div>
-        <button style={{padding:"6px 14px",borderRadius:6,border:"1px solid #dee2e6",background:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#495057"}} onClick={onSync} disabled={sync.syncing}>Sync Now</button>
+    <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
+      <div style={dropStyle} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave} onClick={()=>fileRef.current&&fileRef.current.click()}>
+        <input ref={fileRef} type="file" accept=".docx,.txt,.doc" multiple onChange={onFileChange} style={{display:"none"}}/>
+        <div style={{marginBottom:12}}>{IC.upload}</div>
+        <div style={{fontSize:mob?15:16,fontWeight:600,color:"#1d3557",marginBottom:6}}>{processing?"Processing...":"Drop files here or click to browse"}</div>
+        <div style={{fontSize:13,color:"#868e96"}}>Accepts .docx (Google Docs), .txt, and .doc files</div>
       </div>
-      {sync.lastSync&&<div style={{marginTop:10,fontSize:13,color:"#868e96"}}>
-        Last sync: {new Date(sync.lastSync).toLocaleString()} · {sync.totalFiles||0} files in folder · {imported.length} imported
-      </div>}
-      {sync.newWords>0&&<div style={{marginTop:6,fontSize:13,color:"#2d6a4f",fontWeight:600}}>+{sync.newWords} new words added from {sync.newFiles} new file{sync.newFiles!==1?"s":""}</div>}
-      {sync.failedFiles>0&&<div style={{marginTop:6,fontSize:13,color:"#e09f3e",fontWeight:600}}>{sync.failedFiles} file{sync.failedFiles!==1?"s":""} could not be imported</div>}
-      {sync.newFiles===0&&sync.lastSync&&!sync.syncing&&!sync.error&&<div style={{marginTop:6,fontSize:13,color:"#868e96"}}>Everything up to date</div>}
-      {sync.error&&<div style={{marginTop:10,padding:"12px 16px",borderRadius:8,background:"#fde8e8",border:"1px solid #f5c6cb"}}>
-        <div style={{fontSize:13,color:"#c1121f",lineHeight:1.6}}>{sync.error}</div>
-        <a href={guideUrl} target="_blank" rel="noopener" style={{fontSize:12,color:"#e76f51",fontWeight:600,marginTop:6,display:"inline-block"}}>View setup &amp; troubleshooting guide &rarr;</a>
-      </div>}
+    </div>
+
+    {result&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16,borderLeft:`4px solid ${result.failed&&!result.added?"#c1121f":"#2d6a4f"}`}}>
+      {result.added>0&&<div style={{fontSize:14,color:"#2d6a4f",fontWeight:600}}>+{result.added} lesson{result.added!==1?"s":""} imported</div>}
+      {result.skipped>0&&<div style={{fontSize:13,color:"#868e96",marginTop:4}}>{result.skipped} duplicate{result.skipped!==1?"s":""} skipped</div>}
+      {result.failed>0&&<div style={{fontSize:13,color:"#c1121f",marginTop:4}}>{result.failed} file{result.failed!==1?"s":""} could not be parsed</div>}
+      {result.added===0&&result.failed===0&&result.skipped>0&&<div style={{fontSize:14,color:"#868e96"}}>All files already imported</div>}
     </div>}
 
-    {connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
-      <h3 style={Z.ch}>How it works</h3>
+    <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}>
+      <h3 style={Z.ch}>How to import</h3>
       <div style={{fontSize:14,color:"#495057",lineHeight:1.7}}>
-        <p style={{marginBottom:8}}>Your Drive folder is linked. New homework documents are automatically detected and parsed each time you open the app.</p>
-        <p style={{marginBottom:8}}>Format your docs with vocabulary like:</p>
+        <ol style={{paddingLeft:20,margin:0}}>
+          <li style={{marginBottom:4}}>Open your lesson in Google Docs</li>
+          <li style={{marginBottom:4}}>File &rarr; Download &rarr; Microsoft Word (.docx)</li>
+          <li style={{marginBottom:4}}>Drag the downloaded file above, or click to browse</li>
+        </ol>
+        <p style={{marginTop:12,marginBottom:8}}>Format your docs with vocabulary like:</p>
         <div style={{background:"#fafaf8",borderRadius:8,padding:"12px 16px",fontSize:13,fontFamily:"monospace",color:"#264653",marginBottom:8,lineHeight:1.6}}>
           hola - hello<br/>buenos días - good morning<br/>hablar - to speak<br/>el libro - the book
         </div>
         <p style={{fontSize:13,color:"#868e96"}}>Supports patterns: <code>word - translation</code>, <code>word = translation</code>, <code>word: translation</code></p>
       </div>
-    </div>}
+    </div>
 
-    {connected&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-      <button style={actionBtn} onClick={()=>setShowSetup(x=>!x)}>{showSetup?"Hide":"Edit"} Settings</button>
-      <button style={actionBtn} onClick={resync}>Re-import All Files</button>
-      <a href={guideUrl} target="_blank" rel="noopener" style={{...actionBtn,textDecoration:"none",display:"inline-flex",alignItems:"center"}}>Setup Guide</a>
-      <button style={{...actionBtn,borderColor:"#fde8e8",color:"#c1121f"}} onClick={disconnect}>Disconnect</button>
-    </div>}
-
-    {showSetup&&<>
-      {!connected&&<div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}><h3 style={Z.ch}>One-time Setup</h3><ol style={{fontSize:mob?13:14,color:"#495057",lineHeight:1.8,paddingLeft:20,margin:0}}>
-        <li>Create a folder in Google Drive for your homework docs</li>
-        <li>Share it as <strong>"Anyone with the link"</strong> (Viewer)</li>
-        <li>Copy the folder ID from the URL (the part after <code>/folders/</code>)</li>
-        <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style={{color:"#e76f51"}}>Google Cloud Console</a> &rarr; New Project &rarr; Enable <strong>Google Drive API</strong> &rarr; Create <strong>API Key</strong></li>
-        <li>Paste both below and hit Connect</li>
-      </ol>
-      <div style={{marginTop:12}}><a href={guideUrl} target="_blank" rel="noopener" style={{fontSize:13,color:"#e76f51",fontWeight:600}}>Need detailed instructions? View the full setup guide &rarr;</a></div>
-      </div>}
-      <div style={{...(mob?Z.cardM:Z.card),marginBottom:16}}><h3 style={Z.ch}>{connected?"Settings":"Connection"}</h3>
-        <div style={{marginBottom:10}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>Folder ID</label><input style={{...Z.inp,width:"100%"}} placeholder="1aBcDeFgHiJk..." value={ds.folderId} onChange={e=>sds(s=>({...s,folderId:e.target.value}))}/></div>
-        <div style={{marginBottom:14}}><label style={{fontSize:12,fontWeight:600,color:"#495057",display:"block",marginBottom:4}}>API Key</label><input style={{...Z.inp,width:"100%"}} type="password" placeholder="AIza..." value={ds.apiKey} onChange={e=>sds(s=>({...s,apiKey:e.target.value}))}/></div>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-          <button style={mob?Z.startBtnM:Z.startBtn} onClick={()=>{setShowSetup(false);setTestResult(null);onSync()}} disabled={!ds.folderId||!ds.apiKey||sync.syncing}>{sync.syncing?"Connecting...":"Connect & Sync"}</button>
-          <button style={{padding:"14px 24px",borderRadius:10,border:"1px solid #dee2e6",background:"#fff",fontSize:mob?15:16,fontWeight:600,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",color:"#495057"}} onClick={testConnection} disabled={!ds.folderId||!ds.apiKey||testing}>{testing?"Testing...":"Test Connection"}</button>
+    {uploaded.length>0&&<div style={mob?Z.cardM:Z.card}>
+      <h3 style={Z.ch}>Uploaded Lessons ({uploaded.length})</h3>
+      {uploaded.map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f0f0f0"}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:600,color:"#1d3557"}}>{l.title}</div>
+          <div style={{fontSize:12,color:"#868e96"}}>{l.items.length} word{l.items.length!==1?"s":""} · Lesson {l.id}</div>
         </div>
-        {testResult&&<div style={{marginTop:12,padding:"12px 16px",borderRadius:8,background:testResult.ok?"#d8f3dc":"#fde8e8",border:`1px solid ${testResult.ok?"#b7e4c7":"#f5c6cb"}`}}>
-          <div style={{fontSize:13,color:testResult.ok?"#2d6a4f":"#c1121f",lineHeight:1.6}}>{testResult.msg}</div>
-          {!testResult.ok&&<a href={guideUrl} target="_blank" rel="noopener" style={{fontSize:12,color:"#e76f51",fontWeight:600,marginTop:6,display:"inline-block"}}>View setup guide &rarr;</a>}
-        </div>}
-      </div>
-    </>}
+        <button onClick={()=>deleteLesson(l.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#c1121f",padding:6}} title="Delete lesson">{IC.del}</button>
+      </div>)}
+    </div>}
   </div>;
 }
 

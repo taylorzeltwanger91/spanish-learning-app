@@ -2,6 +2,23 @@
 
 All notable changes to the Lengua Spanish Learning App will be documented in this file.
 
+## [2.1.0] - 2026-02-10
+
+### Added
+- File upload/drag-and-drop import — upload .docx or .txt vocabulary files directly from your computer
+- mammoth.js integration for parsing Google Docs (.docx) files
+- Duplicate file detection to prevent re-importing the same file
+- Uploaded lessons list with word counts and delete buttons
+
+### Changed
+- "Drive" sidebar item renamed to "Import" with new upload icon
+- No more API keys or folder IDs — just download from Google Drive and drag into the app
+
+### Removed
+- Google Drive API integration (syncDrive, API key/folder ID setup, test connection)
+- `drive-setup.html` setup guide page
+- Drive settings and imported file tracking from Firestore sync
+
 ## [2.0.0] - 2026-02-10
 
 ### Added
