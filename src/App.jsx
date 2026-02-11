@@ -566,13 +566,8 @@ export default function App() {
           if (cloud.progress) {
             localStorage.setItem("lengua-progress", JSON.stringify(cloud.progress));
             setLessons(prev => {
-              // Firestore is source of truth; only add localStorage items not yet synced
-              const cloudUploaded = (cloud.driveLessons || []).filter(l => l.id && l.id.startsWith("u-"));
-              const cloudIds = new Set(cloudUploaded.map(l => l.id));
-              const localOnly = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]")
-                .filter(l => l.id && l.id.startsWith("u-") && !cloudIds.has(l.id));
-              const saved = [...cloudUploaded, ...localOnly];
-              // Sync localStorage to match merged result
+              // Firestore is the single source of truth — overwrite localStorage to match
+              const saved = (cloud.driveLessons || []).filter(l => l.id && l.id.startsWith("u-"));
               localStorage.setItem("lengua-drive-lessons", JSON.stringify(saved));
               const base = saved.length ? [...LESSONS, ...saved] : LESSONS;
               return base.map(l => ({ ...l, items: l.items.map(i => cloud.progress[i.id] ? { ...i, ...cloud.progress[i.id] } : i) }));
