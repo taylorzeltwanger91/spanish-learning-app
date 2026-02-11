@@ -573,12 +573,19 @@ export default function App() {
               return base.map(l => ({ ...l, items: l.items.map(i => cloud.progress[i.id] ? { ...i, ...cloud.progress[i.id] } : i) }));
             });
           }
-          // Purge old Drive API artifacts from Firestore if any exist
+          // Purge old Drive API artifacts from Firestore + localStorage
           const rawCloud = cloud.driveLessons || [];
           const cleanCloud = rawCloud.filter(l => l.id && l.id.startsWith("u-"));
           if (rawCloud.length !== cleanCloud.length) {
             saveToFirestore(u.uid, { driveLessons: cleanCloud });
           }
+          const rawLocal = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]");
+          const cleanLocal = rawLocal.filter(l => l.id && l.id.startsWith("u-"));
+          if (rawLocal.length !== cleanLocal.length) {
+            localStorage.setItem("lengua-drive-lessons", JSON.stringify(cleanLocal));
+          }
+          localStorage.removeItem("lengua-drive");
+          localStorage.removeItem("lengua-imported");
           if (cloud.custom) { localStorage.setItem("lengua-custom", JSON.stringify(cloud.custom)); setCustom(cloud.custom); }
           if (cloud.conjProgress) { localStorage.setItem("lengua-conj-progress", JSON.stringify(cloud.conjProgress)); setConjProg(cloud.conjProgress); }
         } else {
