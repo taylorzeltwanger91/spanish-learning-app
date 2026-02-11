@@ -393,6 +393,7 @@ function parseLesson(text, fileId, fileName) {
   const lessonId = `u-${fileId}`;
   return {
     id: lessonId,
+    displayNum: lessonNum,
     title,
     date: new Date().toISOString().split("T")[0],
     sentences,
@@ -694,8 +695,8 @@ function Home({st,lessons,all,go,sf,mob}) {
     <div style={mob?Z.sgM:Z.sg}>{[["Total Words",st.total,"#264653"],["Mastered",st.mastered,"#2d6a4f"],["Learning",st.learning,"#e09f3e"],["Due Today",st.due,"#c1121f"]].map(([l,v,c])=><div key={l} style={{...Z.sc,borderLeft:`4px solid ${c}`}}><div style={{fontSize:mob?22:28,fontWeight:700,fontFamily:"'DM Serif Display',serif",color:c}}>{v}</div><div style={{fontSize:mob?12:13,color:"#868e96",marginTop:2}}>{l}</div></div>)}</div>
     <div style={mob?Z.tcM:Z.tc}>
       <div style={mob?Z.cardM:Z.card}><h3 style={Z.ch}>Lessons</h3>
-        {lessons.map(l=>{const m=l.items.filter(i=>i.confidence>=4).length,p=Math.round(m/l.items.length*100);return <button key={l.id} style={Z.lRow} onClick={()=>{sf({lesson:l.id,verbType:"all"});go("practice")}}>
-          <div><div style={{fontSize:11,fontWeight:600,color:"#e76f51",letterSpacing:.5}}>LESSON {l.id}</div><div style={{fontSize:14,fontWeight:500,color:"#264653"}}>{l.title}</div></div>
+        {lessons.map(l=>{const m=l.items.filter(i=>i.confidence>=4).length,p=Math.round(m/l.items.length*100);const dn=l.displayNum||l.id;return <button key={l.id} style={Z.lRow} onClick={()=>{sf({lesson:l.id,verbType:"all"});go("practice")}}>
+          <div><div style={{fontSize:11,fontWeight:600,color:"#e76f51",letterSpacing:.5}}>LESSON {dn}</div><div style={{fontSize:14,fontWeight:500,color:"#264653"}}>{l.title}</div></div>
           <div style={{display:"flex",alignItems:"center",gap:10}}><div style={Z.bO}><div style={{...Z.bI,width:`${p}%`}}/></div><span style={{fontSize:13,fontWeight:600,color:"#495057",minWidth:36,textAlign:"right"}}>{p}%</span></div>
         </button>})}
       </div>
@@ -722,7 +723,7 @@ function Flashcards({fi,pf,sf,pm,spm,lessons,upd,sh,mob}) {
     <h1 style={mob?Z.h1M:Z.h1}>Tarjetas</h1><p style={Z.sub}>Flashcard practice with spaced repetition</p>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:mob?"flex-start":"center",gap:mob?8:12,marginBottom:16,flexWrap:"wrap",flexDirection:mob?"column":"row"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",width:mob?"100%":"auto"}}>{IC.filt}
-        <select style={{...Z.sel,...(mob?{flex:1,fontSize:12}:{})}} value={pf.lesson} onChange={e=>sf(f=>({...f,lesson:e.target.value}))}><option value="all">All Lessons</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id} – {l.title}</option>)}<option value="custom">Custom</option></select>
+        <select style={{...Z.sel,...(mob?{flex:1,fontSize:12}:{})}} value={pf.lesson} onChange={e=>sf(f=>({...f,lesson:e.target.value}))}><option value="all">All Lessons</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.displayNum||l.id} – {l.title}</option>)}<option value="custom">Custom</option></select>
         <select style={{...Z.sel,...(mob?{fontSize:12}:{})}} value={pf.verbType} onChange={e=>sf(f=>({...f,verbType:e.target.value}))}><option value="all">All Types</option><option value="AR">AR</option><option value="ER">ER</option><option value="IR">IR</option><option value="irregular">Irregular</option></select>
       </div>
       <div style={{display:"flex",gap:4}}>{["es-en","en-es"].map(m=><button key={m} style={{padding:mob?"6px 10px":"6px 14px",borderRadius:6,border:"1px solid #dee2e6",background:pm===m?"#1d3557":"#fff",color:pm===m?"#fff":"#868e96",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}} onClick={()=>spm(m)}>{m==="es-en"?"ES→EN":"EN→ES"}</button>)}</div>
@@ -786,7 +787,7 @@ function Sentences({fs,pf,sf,lessons,mob}) {
   return <div style={mob?Z.pgM:Z.pg}>
     <h1 style={mob?Z.h1M:Z.h1}>Oraciones</h1><p style={Z.sub}>Build or type sentences in Spanish</p>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:mob?"flex-start":"center",gap:mob?8:12,marginBottom:16,flexWrap:"wrap",flexDirection:mob?"column":"row"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,width:mob?"100%":"auto"}}>{IC.filt}<select style={{...Z.sel,...(mob?{flex:1}:{})}} value={pf.lesson} onChange={e=>sf(f=>({...f,lesson:e.target.value}))}><option value="all">All Lessons</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id} – {l.title}</option>)}</select></div>
+      <div style={{display:"flex",alignItems:"center",gap:8,width:mob?"100%":"auto"}}>{IC.filt}<select style={{...Z.sel,...(mob?{flex:1}:{})}} value={pf.lesson} onChange={e=>sf(f=>({...f,lesson:e.target.value}))}><option value="all">All Lessons</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.displayNum||l.id} – {l.title}</option>)}</select></div>
       <div style={{display:"flex",gap:4}}><button style={modeBtn("build")} onClick={()=>setMode("build")}>Build</button><button style={modeBtn("type")} onClick={()=>setMode("type")}>Type / Speak</button></div>
     </div>
     <p style={{fontSize:13,color:"#868e96",marginBottom:20}}>{fs.length} sentences available</p>
@@ -853,7 +854,7 @@ function Dict({all,custom,addC,delC,upd,lessons,mob}) {
     </div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:mob?8:12,marginBottom:16,flexWrap:"wrap"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid #dee2e6",background:"#fff",flex:1,maxWidth:mob?"100%":320,color:"#868e96"}}>{IC.srch}<input style={{border:"none",outline:"none",fontSize:13,fontFamily:"'DM Sans',sans-serif",flex:1,color:"#264653",background:"transparent"}} placeholder="Search..." value={s} onChange={e=>setS(e.target.value)}/></div>
-      <select style={Z.sel} value={fl} onChange={e=>setFl(e.target.value)}><option value="all">All</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id}</option>)}<option value="custom">Custom</option></select>
+      <select style={Z.sel} value={fl} onChange={e=>setFl(e.target.value)}><option value="all">All</option>{lessons.map(l=><option key={l.id} value={l.id}>L{l.displayNum||l.id}</option>)}<option value="custom">Custom</option></select>
       {mob&&<select style={Z.sel} value={sort.col} onChange={e=>toggleSort(e.target.value)}><option value="spanish">Sort: Spanish{sortArrow("spanish")}</option><option value="english">Sort: English{sortArrow("english")}</option><option value="type">Sort: Type{sortArrow("type")}</option><option value="source">Sort: Source{sortArrow("source")}</option><option value="status">Sort: Status{sortArrow("status")}</option></select>}
     </div>
     {mob?<div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -862,7 +863,7 @@ function Dict({all,custom,addC,delC,upd,lessons,mob}) {
           <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Spanish</label><input style={editInp} value={editVals.spanish} onChange={e=>setEditVals(v=>({...v,spanish:e.target.value}))}/></div>
           <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>English</label><input style={editInp} value={editVals.english} onChange={e=>setEditVals(v=>({...v,english:e.target.value}))}/></div>
           <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Type</label><select style={editSel} value={editVals.pos} onChange={e=>setEditVals(v=>({...v,pos:e.target.value}))}>{posOpts.map(p=><option key={p} value={p}>{posLabel(p)}</option>)}</select></div>
-          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Source</label><select style={editSel} value={editVals.lesson} onChange={e=>setEditVals(v=>({...v,lesson:e.target.value}))}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id}</option>)}<option value="custom">Custom</option></select></div>
+          <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Source</label><select style={editSel} value={editVals.lesson} onChange={e=>setEditVals(v=>({...v,lesson:e.target.value}))}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.displayNum||l.id}</option>)}<option value="custom">Custom</option></select></div>
           <div><label style={{fontSize:11,fontWeight:600,color:"#868e96",textTransform:"uppercase",letterSpacing:.5}}>Status</label><select style={editSel} value={editVals.status} onChange={e=>setEditVals(v=>({...v,status:e.target.value}))}><option>New</option><option>Learning</option><option>Mastered</option></select></div>
         </div>
         <div style={{display:"flex",gap:8}}><button style={savBtnS} onClick={()=>saveEdit(i.id)}>Save</button><button style={canBtnS} onClick={cancelEdit}>Cancel</button></div>
@@ -881,7 +882,7 @@ function Dict({all,custom,addC,delC,upd,lessons,mob}) {
         <span style={{flex:2}}><input style={editInp} value={editVals.spanish} onChange={e=>setEditVals(v=>({...v,spanish:e.target.value}))}/></span>
         <span style={{flex:2}}><input style={editInp} value={editVals.english} onChange={e=>setEditVals(v=>({...v,english:e.target.value}))}/></span>
         <span style={{flex:1}}><select style={editSel} value={editVals.pos} onChange={e=>setEditVals(v=>({...v,pos:e.target.value}))}>{posOpts.map(p=><option key={p} value={p}>{posLabel(p)}</option>)}</select></span>
-        <span style={{flex:1}}><select style={editSel} value={editVals.lesson} onChange={e=>setEditVals(v=>({...v,lesson:e.target.value}))}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.id}</option>)}<option value="custom">Custom</option></select></span>
+        <span style={{flex:1}}><select style={editSel} value={editVals.lesson} onChange={e=>setEditVals(v=>({...v,lesson:e.target.value}))}>{lessons.map(l=><option key={l.id} value={l.id}>L{l.displayNum||l.id}</option>)}<option value="custom">Custom</option></select></span>
         <span style={{flex:1}}><select style={editSel} value={editVals.status} onChange={e=>setEditVals(v=>({...v,status:e.target.value}))}><option>New</option><option>Learning</option><option>Mastered</option></select></span>
         <span style={{width:80,display:"flex",gap:4,justifyContent:"flex-end"}}><button style={savBtnS} onClick={()=>saveEdit(i.id)}>Save</button><button style={canBtnS} onClick={cancelEdit}>{"\u2715"}</button></span>
       </div>:<div key={i.id} style={{display:"flex",alignItems:"center",padding:"12px 20px",fontSize:14,borderBottom:"1px solid #f0f0f0",cursor:"pointer"}} onClick={()=>startEdit(i)}>
@@ -909,7 +910,7 @@ function Prog({st,all,lessons,hist,mob}) {
     </div>
     <div style={{...(mob?Z.tcM:Z.tc),marginTop:16}}>
       <div style={mob?Z.cardM:Z.card}><h3 style={Z.ch}>Verb Types</h3>{vb.map(v=><div key={v.type} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:14,marginBottom:4}}><span style={{fontWeight:600}}>{v.type}</span><span style={{color:"#868e96"}}>{v.m}/{v.total}</span></div><div style={Z.bO}><div style={{...Z.bI,width:`${v.pct}%`}}/></div></div>)}</div>
-      <div style={mob?Z.cardM:Z.card}><h3 style={Z.ch}>By Lesson</h3>{lessons.map(l=>{const m=l.items.filter(i=>i.confidence>=4).length,p=Math.round(m/l.items.length*100);return <div key={l.id} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:14,marginBottom:4}}><span style={{fontWeight:600}}>L{l.id}</span><span style={{color:"#868e96"}}>{p}%</span></div><div style={Z.bO}><div style={{...Z.bI,width:`${p}%`}}/></div></div>})}</div>
+      <div style={mob?Z.cardM:Z.card}><h3 style={Z.ch}>By Lesson</h3>{lessons.map(l=>{const m=l.items.filter(i=>i.confidence>=4).length,p=Math.round(m/l.items.length*100);return <div key={l.id} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:14,marginBottom:4}}><span style={{fontWeight:600}}>L{l.displayNum||l.id}</span><span style={{color:"#868e96"}}>{p}%</span></div><div style={Z.bO}><div style={{...Z.bI,width:`${p}%`}}/></div></div>})}</div>
     </div>
     {hist.length>0&&<div style={{...(mob?Z.cardM:Z.card),marginTop:16}}><h3 style={Z.ch}>Recent Sessions</h3>{hist.slice(-5).reverse().map((s,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #f0f0f0",fontSize:14}}><span style={{color:"#495057"}}>{new Date(s.date).toLocaleDateString()}</span><div style={{display:"flex",gap:mob?10:16}}><span style={{color:"#2d6a4f"}}>✓{s.correct}</span><span style={{color:"#c1121f"}}>✗{s.wrong}</span><span style={{color:"#868e96"}}>⟫{s.skipped}</span></div></div>)}</div>}
   </div>;
@@ -1003,13 +1004,13 @@ function Import({lessons,setLessons,mob}) {
 
     {uploaded.length>0&&<div style={mob?Z.cardM:Z.card}>
       <h3 style={Z.ch}>Uploaded Lessons ({uploaded.length})</h3>
-      {uploaded.map(l=><div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f0f0f0"}}>
+      {uploaded.map(l=>{const dn=l.displayNum;return <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #f0f0f0"}}>
         <div>
-          <div style={{fontSize:14,fontWeight:600,color:"#1d3557"}}>{l.title}</div>
-          <div style={{fontSize:12,color:"#868e96"}}>{l.items.length} word{l.items.length!==1?"s":""} · Lesson {l.id}</div>
+          <div style={{fontSize:14,fontWeight:600,color:"#1d3557"}}>{dn?`${dn} \u2014 `:""}{l.title}</div>
+          <div style={{fontSize:12,color:"#868e96"}}>{l.items.length} word{l.items.length!==1?"s":""}</div>
         </div>
         <button onClick={()=>deleteLesson(l.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#c1121f",padding:6}} title="Delete lesson">{IC.del}</button>
-      </div>)}
+      </div>})}
     </div>}
   </div>;
 }
