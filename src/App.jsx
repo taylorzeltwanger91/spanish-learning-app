@@ -390,7 +390,7 @@ function parseLesson(text, fileId, fileName) {
     }
   }
 
-  const lessonId = lessonNum || `d-${fileId.slice(0,6)}`;
+  const lessonId = `u-${fileId}`;
   return {
     id: lessonId,
     title,
@@ -926,12 +926,13 @@ function Import({lessons,setLessons,mob}) {
   const processFiles=async(files)=>{
     setProcessing(true);setResult(null);
     let added=0,skipped=0,failed=0;
+    const batchKeys=new Set();
     for(const file of files) {
       try {
         const ext=file.name.split(".").pop().toLowerCase();
-        // Duplicate detection: name+size hash
+        // Duplicate detection: name+size hash — check existing uploads + current batch
         const fileKey=file.name+":"+file.size;
-        const isDup=uploaded.some(l=>(l._fileKey||"")=== fileKey);
+        const isDup=uploaded.some(l=>(l._fileKey||"")===fileKey)||batchKeys.has(fileKey);
         if(isDup){skipped++;continue}
         let txt="";
         if(ext==="docx"||ext==="doc") {
@@ -942,11 +943,12 @@ function Import({lessons,setLessons,mob}) {
           txt=await file.text();
         } else { failed++;continue }
         if(!txt.trim()){failed++;continue}
-        const fileId=btoa(fileKey).replace(/[^a-zA-Z0-9]/g,"").slice(0,12);
+        const fileId=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
         const lesson=parseLesson(txt,fileId,file.name);
         if(lesson.items.length) {
           lesson._fileKey=fileKey;
-          setLessons(p=>{const x=p.findIndex(l=>l.id===lesson.id);if(x>=0){const n=[...p];n[x]=lesson;return n}return[...p,lesson]});
+          batchKeys.add(fileKey);
+          setLessons(p=>[...p,lesson]);
           added++;
         } else { failed++ }
       } catch(e) { failed++ }
