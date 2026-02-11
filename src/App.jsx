@@ -352,6 +352,9 @@ function parseLesson(text, fileId, fileName) {
   const titleMatch = text.match(/^(?:lesson|lección|unit|unidad)\s*[:\-–]?\s*(?:\d+(?:\.\d+)?\s*[:\-–]?\s*)?(.+)/im);
   if(titleMatch) title = titleMatch[1].trim();
 
+  // Strip leading lesson number from title to avoid duplication (e.g. "1.1 Practica de Verbios" → "Practica de Verbios")
+  if(lessonNum) title = title.replace(new RegExp("^(?:lesson|lección|lecci[oó]n|unit|unidad)?\\s*" + lessonNum.replace(".", "\\.") + "\\s*[:\\-–—]?\\s*", "i"), "").trim() || title;
+
   for(const line of lines) {
     // Match vocabulary patterns: "spanish - english", "spanish = english", "spanish: english", "spanish — english"
     const vocabMatch = line.match(/^[•\-\*\d.\)]*\s*([¿¡]?[a-záéíóúñü\s,()\/]+?)\s*[-=–—:]\s*(.+)$/i);
