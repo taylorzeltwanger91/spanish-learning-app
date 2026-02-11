@@ -566,27 +566,23 @@ export default function App() {
           if (cloud.progress) {
             localStorage.setItem("lengua-progress", JSON.stringify(cloud.progress));
             setLessons(prev => {
-              // Merge uploaded lessons from Firestore + localStorage, localStorage wins (written sync)
+              // Firestore is source of truth; only add localStorage items not yet synced
               const cloudUploaded = (cloud.driveLessons || []).filter(l => l.id && l.id.startsWith("u-"));
-              const localUploaded = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]").filter(l => l.id && l.id.startsWith("u-"));
-              const merged = new Map();
-              for (const l of cloudUploaded) merged.set(l.id, l);
-              for (const l of localUploaded) merged.set(l.id, l);
-              const saved = [...merged.values()];
+              const cloudIds = new Set(cloudUploaded.map(l => l.id));
+              const localOnly = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]")
+                .filter(l => l.id && l.id.startsWith("u-") && !cloudIds.has(l.id));
+              const saved = [...cloudUploaded, ...localOnly];
+              // Sync localStorage to match merged result
+              localStorage.setItem("lengua-drive-lessons", JSON.stringify(saved));
               const base = saved.length ? [...LESSONS, ...saved] : LESSONS;
               return base.map(l => ({ ...l, items: l.items.map(i => cloud.progress[i.id] ? { ...i, ...cloud.progress[i.id] } : i) }));
             });
           }
-          // Purge old Drive API artifacts from Firestore + localStorage
+          // Purge old Drive API artifacts from Firestore
           const rawCloud = cloud.driveLessons || [];
           const cleanCloud = rawCloud.filter(l => l.id && l.id.startsWith("u-"));
           if (rawCloud.length !== cleanCloud.length) {
             saveToFirestore(u.uid, { driveLessons: cleanCloud });
-          }
-          const rawLocal = JSON.parse(localStorage.getItem("lengua-drive-lessons") || "[]");
-          const cleanLocal = rawLocal.filter(l => l.id && l.id.startsWith("u-"));
-          if (rawLocal.length !== cleanLocal.length) {
-            localStorage.setItem("lengua-drive-lessons", JSON.stringify(cleanLocal));
           }
           localStorage.removeItem("lengua-drive");
           localStorage.removeItem("lengua-imported");
