@@ -18,14 +18,18 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 
-// Debounced Firestore save — waits 2s after last change before writing
+// Debounced Firestore save — accumulates all fields, writes once after 2s of quiet
 let _saveTimer = null;
+let _pendingData = {};
 function saveToFirestore(uid, data) {
   if (!uid) return;
+  _pendingData = { ..._pendingData, ...data };
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(async () => {
+    const toSave = _pendingData;
+    _pendingData = {};
     try {
-      await setDoc(doc(db, "users", uid), { ...data, updatedAt: Date.now() }, { merge: true });
+      await setDoc(doc(db, "users", uid), { ...toSave, updatedAt: Date.now() }, { merge: true });
     } catch (e) { console.warn("Firestore save failed:", e.message); }
   }, 2000);
 }
