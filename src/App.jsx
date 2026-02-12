@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, updateProfile } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithRedirect, GoogleAuthProvider, signOut, updateProfile } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 import mammoth from "mammoth";
 
@@ -470,9 +470,9 @@ function AuthScreen({ onAuth }) {
   const googleSignIn = async () => {
     setErr("");
     setLoading(true);
-    try { await signInWithPopup(auth, googleProvider); }
+    try { await signInWithRedirect(auth, googleProvider); }
     catch (e) {
-      if (e.code !== "auth/popup-closed-by-user") setErr(e.message || "Google sign-in failed.");
+      setErr(e.message || "Google sign-in failed.");
     }
     setLoading(false);
   };
