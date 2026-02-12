@@ -33,6 +33,12 @@ function saveToFirestore(uid, data) {
     } catch (e) { console.warn("Firestore save failed:", e.message); }
   }, 2000);
 }
+// Immediate Firestore write — bypasses debounce for critical operations
+function saveToFirestoreNow(uid, data) {
+  if (!uid) return;
+  setDoc(doc(db, "users", uid), { ...data, updatedAt: Date.now() }, { merge: true })
+    .catch(e => console.warn("Firestore save failed:", e.message));
+}
 
 async function loadFromFirestore(uid) {
   if (!uid) return null;
@@ -697,7 +703,7 @@ export default function App() {
         {view==="conjugation"&&<Conjugacion conjProg={conjProg} updConj={updConj} mob={mob}/>}
         {view==="dictionary"&&<Dict all={all} custom={custom} addC={addC} delC={delC} upd={upd} lessons={lessons} mob={mob}/>}
         {view==="progress"&&<Prog st={st} all={all} lessons={lessons} hist={hist} mob={mob}/>}
-        {view==="import"&&<Import lessons={lessons} setLessons={setLessons} mob={mob}/>}
+        {view==="import"&&<Import lessons={lessons} setLessons={setLessons} mob={mob} user={user}/>}
         {view==="settings"&&<Settings mob={mob}/>}
       </main>
     </div>
@@ -932,7 +938,7 @@ function Prog({st,all,lessons,hist,mob}) {
   </div>;
 }
 
-function Import({lessons,setLessons,mob}) {
+function Import({lessons,setLessons,mob,user}) {
   const [dragging,setDragging]=useState(false);
   const [processing,setProcessing]=useState(false);
   const [result,setResult]=useState(null);
@@ -979,7 +985,20 @@ function Import({lessons,setLessons,mob}) {
   const onDragLeave=useCallback(()=>setDragging(false),[]);
   const onFileChange=useCallback((e)=>{const files=[...e.target.files];if(files.length)processFiles(files);e.target.value=""},[uploaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const deleteLesson=useCallback((id)=>{setLessons(p=>p.filter(l=>l.id!==id))},[setLessons]);
+  const deleteLesson=useCallback((id)=>{
+    setLessons(p=>{
+      const next=p.filter(l=>l.id!==id);
+      const drive=next.filter(l=>!builtInIds.has(l.id));
+      localStorage.setItem("lengua-drive-lessons",JSON.stringify(drive));
+      if(user) saveToFirestoreNow(user.uid,{driveLessons:drive});
+      return next;
+    });
+  },[setLessons,builtInIds,user]);
+  const clearAll=useCallback(()=>{
+    setLessons(LESSONS);
+    localStorage.setItem("lengua-drive-lessons","[]");
+    if(user) saveToFirestoreNow(user.uid,{driveLessons:[]});
+  },[setLessons,user]);
 
   const dropStyle={border:`2px dashed ${dragging?"#e76f51":"#dee2e6"}`,borderRadius:12,padding:mob?24:40,textAlign:"center",background:dragging?"#fff5f2":"#fafaf8",cursor:"pointer",transition:"all .2s"};
 
@@ -1027,6 +1046,7 @@ function Import({lessons,setLessons,mob}) {
         </div>
         <button onClick={()=>deleteLesson(l.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#c1121f",padding:6}} title="Delete lesson">{IC.del}</button>
       </div>})}
+      <button onClick={clearAll} style={{marginTop:12,padding:"8px 16px",borderRadius:6,border:"1px solid #fde8e8",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#c1121f"}}>Clear All Uploads</button>
     </div>}
   </div>;
 }
