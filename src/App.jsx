@@ -1046,8 +1046,9 @@ function Import({lessons,setLessons,mob,user}) {
         </div>
         <button onClick={()=>deleteLesson(l.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#c1121f",padding:6}} title="Delete lesson">{IC.del}</button>
       </div>})}
-      <button onClick={clearAll} style={{marginTop:12,padding:"8px 16px",borderRadius:6,border:"1px solid #fde8e8",background:"#fff",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#c1121f"}}>Clear All Uploads</button>
     </div>}
+
+    <button onClick={clearAll} style={{padding:"10px 20px",borderRadius:8,border:"1px solid #fde8e8",background:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",color:"#c1121f",marginTop:4}}>Clear All Uploads</button>
   </div>;
 }
 
