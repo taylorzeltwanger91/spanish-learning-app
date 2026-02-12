@@ -35,8 +35,8 @@ function saveToFirestore(uid, data) {
 }
 // Immediate Firestore write — bypasses debounce for critical operations
 function saveToFirestoreNow(uid, data) {
-  if (!uid) return;
-  setDoc(doc(db, "users", uid), { ...data, updatedAt: Date.now() }, { merge: true })
+  if (!uid) return Promise.resolve();
+  return setDoc(doc(db, "users", uid), { ...data, updatedAt: Date.now() }, { merge: true })
     .catch(e => console.warn("Firestore save failed:", e.message));
 }
 
@@ -994,11 +994,13 @@ function Import({lessons,setLessons,mob,user}) {
       return next;
     });
   },[setLessons,builtInIds,user]);
-  const clearAll=useCallback(()=>{
-    setLessons(LESSONS);
+  const clearAll=useCallback(async()=>{
     localStorage.setItem("lengua-drive-lessons","[]");
-    if(user) saveToFirestoreNow(user.uid,{driveLessons:[]});
-  },[setLessons,user]);
+    localStorage.removeItem("lengua-drive");
+    localStorage.removeItem("lengua-imported");
+    if(user) await saveToFirestoreNow(user.uid,{driveLessons:[]});
+    window.location.reload();
+  },[user]);
 
   const dropStyle={border:`2px dashed ${dragging?"#e76f51":"#dee2e6"}`,borderRadius:12,padding:mob?24:40,textAlign:"center",background:dragging?"#fff5f2":"#fafaf8",cursor:"pointer",transition:"all .2s"};
 
